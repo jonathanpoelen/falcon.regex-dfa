@@ -4,14 +4,15 @@
 #include <stdexcept>
 #include <algorithm>
 
-// #include <iostream>
+#include <iostream>
 // #include "print_automaton.hpp"
+
+namespace {
 
 struct Stack {
   std::vector<unsigned> iends;
   falcon::regex_dfa::Range::State states;
   unsigned icap;
-  unsigned ipipe;
   unsigned itrs;
 };
 
@@ -87,11 +88,12 @@ private:
     return std::size_t{1} << level;
   }
 };
+}
 
 falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
 {
   std::vector<Stack> stack;
-  stack.push_back({{}, Range::Normal, 0, 0, 0});
+  stack.push_back({{}, Range::Normal, 0, 0});
 
   CapStack cap_stack;
 
@@ -130,22 +132,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     }
   };
 
-  auto repeat_element = [&](unsigned long n, auto pre_push){
-    set_transitions();
-    pre_push();
-    irngs.push_back(count_rngs());
-    new_range(std::true_type{});
-    --n;
-    while (n--) {
-      renext_transitions();
-      set_transitions();
-      pre_push();
-      irngs.push_back(count_rngs());
-      new_range(std::false_type{});
-    }
-  };
-
-  enum class MultiDup { Repeat, Conditional, RepeatAndConditional };
+  enum class MultiDup { Repeat, Conditional, RepeatAndConditional, RepeatAndMore };
 
 #ifdef IN_IDE_PARSER
   Captures tmp_capstates;
@@ -156,7 +143,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
 #endif
   (unsigned long m, unsigned long n, auto estate) mutable
   {
-    auto sz = rngs.size();
+    auto const sz = rngs.size();
     new_rng.assign(&rngs[ipipe/*s.back()*/], &rngs[sz]);
     auto count_rng_added = unsigned(new_rng.size() - 1u);
     {
@@ -198,20 +185,34 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
         }
       });
     };
-
-    auto update_rngs = [&] {
-      auto & transitions_added = new_rng[0].transitions;
-      update_transition_indexes();
-      rngs.insert(rngs.end(), new_rng.begin() + 1, new_rng.end());
+    
+    std::vector<unsigned> extended_irng;
+    std::for_each(irngs.begin(), irngs.begin() + ncp_irng, [&](unsigned i) {
+      Transitions const & ts = rngs[i].transitions;
+      for (auto & t : ts) {
+        if (std::find(irngs.begin(), irngs.end(), t.next) != irngs.end()) {
+          extended_irng.push_back(static_cast<unsigned>(t.next));
+        }
+      }
+    });
+    
+    auto insert_transitions = [&](Transitions & transitions_added){
       for (auto & i : irngs) {
         Range & r = rngs[i];
         r.states |= states;
         set_union(r.capstates, cap_stack.captures(), tmp_capstates, std::less<>{});
         r.transitions.insert(r.transitions.end(), transitions_added.begin(), transitions_added.end());
-      }
+       }
+    };
+
+    auto update_rngs = [&] {
+      update_transition_indexes();
+      rngs.insert(rngs.end(), new_rng.begin() + 1, new_rng.end());
+      insert_transitions(new_rng[0].transitions);
       for (auto p = irngs.begin() + ncp_irng, e = irngs.end(); p != e; ++p) {
         *p += count_rng_added;
       }
+      irngs.insert(irngs.end(), extended_irng.begin(), extended_irng.end());
     };
 
     while (--m) {
@@ -220,6 +221,10 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
         set_union(irngs, cp_irngs, tmp_irng, std::greater<>{});
       }
       update_rngs();
+    }
+
+    if (estate == MultiDup::RepeatAndMore) {
+      ts = new_rng[0].transitions;
     }
 
     if (estate == MultiDup::Conditional) {
@@ -297,8 +302,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     stack.push_back({
       {iends},
       states,
-      count_rngs(),
-      ipipe,
+      count_rngs()-1,
       unsigned(rngs[ipipe].transitions.size())
     });
     ipipe = count_rngs()-1;
@@ -307,26 +311,23 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
 
   auto scan_multi_one_or_more = [&]{
     irngs.insert(irngs.end(), iends.begin(), iends.end());
-    ts = rngs[stack.back().icap-1].transitions;
+    ts = rngs[stack.back().icap].transitions;
     set_transitions();
     c = consumer.bumpc();
   };
 
   auto scan_multi_optional = [&]{
     irngs.insert(irngs.end(), iends.begin(), iends.end());
-    irngs.push_back(stack.back().icap-1);
+    irngs.push_back(stack.back().icap);
     c = consumer.bumpc();
   };
 
   auto scan_multi_zero_or_more = [&]{
-    rngs.back() = rngs[stack.back().icap-1];
+    rngs.back() = rngs[stack.back().icap];
     scan_multi_optional();
   };
 
   auto scan_multi_interval = [&]{
-    auto const istart = stack.back().icap;
-    auto const iend = rngs.size() - 1;
-    auto const nsz = static_cast<unsigned>(iend - istart + 1);
     auto start = consumer.str();
     char * end = 0;
     irngs.insert(irngs.end(), iends.begin(), iends.end());
@@ -357,11 +358,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     };
 
     auto repeat_element = [&](unsigned long n){
-      exec_state(
-        n,
-        std::integral_constant<MultiDup, MultiDup::Repeat>{},
-        [](auto x) { return x; }
-      );
+      repeat_multi_dup(n, 0, std::integral_constant<MultiDup, MultiDup::Repeat>{});
     };
 
     auto repeat_conditional = [&](auto check) {
@@ -399,8 +396,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
       if (*end == ',') {
         // {m,}
         if (*++end == '}') {
-          repeat_element(m);
-          ts = rngs[rngs.size() - nsz - 1].transitions;
+          repeat_multi_dup(m, 0, std::integral_constant<MultiDup, MultiDup::RepeatAndMore>{});
           set_transitions();
         }
         // {m,n}
@@ -442,7 +438,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
       ;
     }
 
-    ipipe = stack.back().ipipe;
+    ipipe = stack[stack.size()-2].icap;
     iends = stack.back().iends;
     stack.pop_back();
 
@@ -537,6 +533,22 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
   auto scan_single_interval = [&]{
     auto start = consumer.str();
     char * end = 0;
+
+    auto repeat_element = [&](unsigned long n, auto pre_push) {
+      set_transitions();
+      pre_push();
+      irngs.push_back(count_rngs());
+      new_range(std::true_type{});
+      --n;
+      while (n--) {
+        renext_transitions();
+        set_transitions();
+        pre_push();
+        irngs.push_back(count_rngs());
+        new_range(std::false_type{});
+      }
+    };
+     
     auto repeat_conditional = [&](auto check) {
       unsigned long n = strtoul(start, &end, 10);
 

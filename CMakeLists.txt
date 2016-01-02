@@ -1,4 +1,4 @@
-project(regex)
+project(falcon.regex-dfa)
 cmake_minimum_required(VERSION 2.8)
 aux_source_directory(. SRC_LIST)
 
@@ -21,15 +21,33 @@ include_directories(.)
 
 set(SRC falcon/regex_dfa/)
 
-add_executable(
-  test_scan
-  test/test_scan.cpp
+
+set(
+  SRC_SCAN 
   ${SRC}/scan.cpp
   ${SRC}/print_automaton.cpp
   ${SRC}/reverse_transitions.cpp
   ${SRC}/scan_intervals.cpp
 )
 
-add_test(regex_test test_scan)
+add_library(lib_scan ${SRC_SCAN})
+
+
+link_libraries(lib_scan)
+
+
+add_executable(
+  re_scan
+  utils/scan.cpp
+)
+
+
+add_executable(
+  test_scan
+  test/test_scan.cpp
+)
+
+
+add_test(re_test test_scan)
 
 enable_testing()
