@@ -270,7 +270,8 @@ int main()
   auto const c3 = ts{tc3};
   auto const b2c3 = ts{tb2, tc3};
   auto const a1b2c3 = ts{ta1, tb2, tc3};
-  
+  auto const a1b2c3c3 = ts{ta1, tb2, tc3, tc3};
+
   TEST("(?!ab)c", rs(r(a1), r(b2), r(c3), rf));
   TEST("(?!ab?)c", rs(r(a1), r(b2c3), r(c3), rf));
   TEST("(?!ab+)c", rs(r(a1), r(b2), r(b2c3), rf));
@@ -278,11 +279,11 @@ int main()
   TEST("(?!a?b)c", rs(r(a1b2), r(b2), r(c3), rf));
   TEST("(?!a+b)c", rs(r(a1), r(a1b2), r(c3), rf));
   TEST("(?!a*b)c", rs(r(a1b2), r(a1b2), r(c3), rf));
-  TEST("(?!a?b?)c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
+  TEST("(?!a?b?)c", rs(r(a1b2c3c3), r(b2c3), r(c3), rf));
   TEST("(?!a+b?)c", rs(r(a1), r(a1b2c3), r(c3), rf));
-  TEST("(?!a*b?)c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
+  TEST("(?!a*b?)c", rs(r(a1b2c3c3), r(a1b2c3), r(c3), rf));
   TEST("(?!a?b+)c", rs(r(a1b2), r(b2), r(b2c3), rf));
-  TEST("(?!a?b*)c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
+  TEST("(?!a?b*)c", rs(r(a1b2c3c3), r(b2c3), r(b2c3), rf));
 
   TEST("(?!ab){1}c", rs(r(a1), r(b2), r(c3), rf));
   TEST("(?!ab?){1}c", rs(r(a1), r(b2c3), r(c3), rf));
@@ -291,11 +292,11 @@ int main()
   TEST("(?!a?b){1}c", rs(r(a1b2), r(b2), r(c3), rf));
   TEST("(?!a+b){1}c", rs(r(a1), r(a1b2), r(c3), rf));
   TEST("(?!a*b){1}c", rs(r(a1b2), r(a1b2), r(c3), rf));
-  TEST("(?!a?b?){1}c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
+  TEST("(?!a?b?){1}c", rs(r(a1b2c3c3), r(b2c3), r(c3), rf));
   TEST("(?!a+b?){1}c", rs(r(a1), r(a1b2c3), r(c3), rf));
-  TEST("(?!a*b?){1}c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
+  TEST("(?!a*b?){1}c", rs(r(a1b2c3c3), r(a1b2c3), r(c3), rf));
   TEST("(?!a?b+){1}c", rs(r(a1b2), r(b2), r(b2c3), rf));
-  TEST("(?!a?b*){1}c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
+  TEST("(?!a?b*){1}c", rs(r(a1b2c3c3), r(b2c3), r(b2c3), rf));
 
   auto const tc5 = t('c', 5);
   auto const c5 = ts{tc5};
@@ -306,6 +307,8 @@ int main()
   auto const b2a3b4c5 = ts{tb2, ta3, tb4, tc5};
   auto const a1b2a3b4c5 = ts{ta1, tb2, ta3, tb4, tc5};
   auto const a1b2a3 = ts{ta1, tb2, ta3};
+  auto const a1b2a3b4c5c5 = ts{ta1, tb2, ta3, tb4, tc5, tc5};
+  auto const a1b2c3c3c3 = ts{ta1, tb2, tc3, tc3, tc3};
 
   TEST("(?!ab){2}c", rs(r(a1), r(b2), r(a3), r(b4), r(c5), rf));
   TEST("(?!ab?){2}c", rs(r(a1), r(b2a3), r(a3), r(b4c5), r(c5), rf));
@@ -314,11 +317,11 @@ int main()
   TEST("(?!a?b){2}c", rs(r(a1b2), r(b2), r(a3b4), r(b4), r(c5), rf));
   TEST("(?!a+b){2}c", rs(r(a1), r(a1b2), r(a3), r(a3b4), r(c5), rf));
   TEST("(?!a*b){2}c", rs(r(a1b2), r(a1b2), r(a3b4), r(a3b4), r(c5), rf));
-  TEST("(?!a?b?){2}c", rs(r(a1b2a3b4c5), r(b2a3b4c5), r(a3b4c5), r(b4c5), r(c5), rf));
+  TEST("(?!a?b?){2}c", rs(r(a1b2a3b4c5c5), r(b2a3b4c5), r(a3b4c5), r(b4c5), r(c5), rf));
   TEST("(?!a+b?){2}c", rs(r(a1), r(a1b2a3), r(a3), r(a3b4c5), r(c5), rf));
-  TEST("(?!a*b?){2}c", rs(r(a1b2a3b4c5), r(a1b2a3b4c5), r(a3b4c5), r(a3b4c5), r(c5), rf));
+  TEST("(?!a*b?){2}c", rs(r(a1b2a3b4c5c5), r(a1b2a3b4c5), r(a3b4c5), r(a3b4c5), r(c5), rf));
   TEST("(?!a?b+){2}c", rs(r(a1b2), r(b2), r(b2a3b4), r(b4), r(b4c5), rf));
-  TEST("(?!a?b*){2}c", rs(r(a1b2a3b4c5), r(b2a3b4c5), r(b2a3b4c5), r(b4c5), r(b4c5), rf));
+  TEST("(?!a?b*){2}c", rs(r(a1b2a3b4c5c5), r(b2a3b4c5), r(b2a3b4c5), r(b4c5), r(b4c5), rf));
 
   auto const ta5 = t('a', 5);
   auto const tb6 = t('b', 6);
@@ -336,6 +339,7 @@ int main()
   auto const a5b6c7 = ts{ta5, tb6, tc7};
   auto const a3b4a5 = ts{ta3, tb4, ta5};
   auto const b4a5b6 = ts{tb4, ta5, tb6};
+  auto const a1b2a3b4a5b6c7c7 = ts{ta1, tb2, ta3, tb4, ta5, tb6, tc7, tc7};
 
   TEST("(?!ab){3}c", rs(r(a1), r(b2), r(a3), r(b4), r(a5), r(b6), r(c7), rf));
   TEST("(?!ab?){3}c", rs(r(a1), r(b2a3), r(a3), r(b4a5), r(a5), r(b6c7), r(c7), rf));
@@ -344,29 +348,30 @@ int main()
   TEST("(?!a?b){3}c", rs(r(a1b2), r(b2), r(a3b4), r(b4), r(a5b6), r(b6), r(c7), rf));
   TEST("(?!a+b){3}c", rs(r(a1), r(a1b2), r(a3), r(a3b4), r(a5), r(a5b6), r(c7), rf));
   TEST("(?!a*b){3}c", rs(r(a1b2), r(a1b2), r(a3b4), r(a3b4), r(a5b6), r(a5b6), r(c7), rf));
-  TEST("(?!a?b?){3}c", rs(r(a1b2a3b4a5b6c7), r(b2a3b4a5b6c7), r(a3b4a5b6c7), r(b4a5b6c7), r(a5b6c7), r(b6c7), r(c7), rf));
+  TEST("(?!a?b?){3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2a3b4a5b6c7), r(a3b4a5b6c7), r(b4a5b6c7), r(a5b6c7), r(b6c7), r(c7), rf));
   TEST("(?!a+b?){3}c", rs(r(a1), r(a1b2a3), r(a3), r(a3b4a5), r(a5), r(a5b6c7), r(c7), rf));
-  TEST("(?!a*b?){3}c", rs(r(a1b2a3b4a5b6c7), r(a1b2a3b4a5b6c7), r(a3b4a5b6c7), r(a3b4a5b6c7), r(a5b6c7), r(a5b6c7), r(c7), rf));
+  TEST("(?!a*b?){3}c", rs(r(a1b2a3b4a5b6c7c7), r(a1b2a3b4a5b6c7), r(a3b4a5b6c7), r(a3b4a5b6c7), r(a5b6c7), r(a5b6c7), r(c7), rf));
   TEST("(?!a?b+){3}c", rs(r(a1b2), r(b2), r(b2a3b4), r(b4), r(b4a5b6), r(b6), r(b6c7), rf));
-  TEST("(?!a?b*){3}c", rs(r(a1b2a3b4a5b6c7), r(b2a3b4a5b6c7), r(b2a3b4a5b6c7), r(b4a5b6c7), r(b4a5b6c7), r(b6c7), r(b6c7), rf));
+  TEST("(?!a?b*){3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2a3b4a5b6c7), r(b2a3b4a5b6c7), r(b4a5b6c7), r(b4a5b6c7), r(b6c7), r(b6c7), rf));
 
   auto const a1c3 = ts{ta1, tc3};
-  auto const a1b2c3c3 = ts{ta1, tb2, tc3, tc3};
+  auto const a1c3c3 = ts{ta1, tc3, tc3};
   
-  TEST("(?!ab){,1}c", rs(r(a1c3), r(b2), r(c3), rf));
-  TEST("(?!ab?){,1}c", rs(r(a1c3), r(b2c3), r(c3), rf));
-  TEST("(?!ab+){,1}c", rs(r(a1c3), r(b2), r(b2c3), rf));
-  TEST("(?!ab*){,1}c", rs(r(a1c3), r(b2c3), r(b2c3), rf));
-  TEST("(?!a?b){,1}c", rs(r(a1b2c3), r(b2), r(c3), rf));
-  TEST("(?!a+b){,1}c", rs(r(a1c3), r(a1b2), r(c3), rf));
-  TEST("(?!a*b){,1}c", rs(r(a1b2c3), r(a1b2), r(c3), rf));
-  TEST("(?!a?b?){,1}c", rs(r(a1b2c3c3), r(b2c3), r(c3), rf));
-  TEST("(?!a+b?){,1}c", rs(r(a1c3), r(a1b2c3), r(c3), rf));
-  TEST("(?!a*b?){,1}c", rs(r(a1b2c3c3), r(a1b2c3), r(c3), rf));
-  TEST("(?!a?b+){,1}c", rs(r(a1b2c3), r(b2), r(b2c3), rf));
-  TEST("(?!a?b*){,1}c", rs(r(a1b2c3c3), r(b2c3), r(b2c3), rf));
+  TEST("(?!ab){,1}c", rs(r(a1c3c3), r(b2), r(c3), rf));
+  TEST("(?!ab?){,1}c", rs(r(a1c3c3), r(b2c3), r(c3), rf));
+  TEST("(?!ab+){,1}c", rs(r(a1c3c3), r(b2), r(b2c3), rf));
+  TEST("(?!ab*){,1}c", rs(r(a1c3c3), r(b2c3), r(b2c3), rf));
+  TEST("(?!a?b){,1}c", rs(r(a1b2c3c3), r(b2), r(c3), rf));
+  TEST("(?!a+b){,1}c", rs(r(a1c3c3), r(a1b2), r(c3), rf));
+  TEST("(?!a*b){,1}c", rs(r(a1b2c3c3), r(a1b2), r(c3), rf));
+  TEST("(?!a?b?){,1}c", rs(r(a1b2c3c3c3), r(b2c3), r(c3), rf));
+  TEST("(?!a+b?){,1}c", rs(r(a1c3c3), r(a1b2c3), r(c3), rf));
+  TEST("(?!a*b?){,1}c", rs(r(a1b2c3c3c3), r(a1b2c3), r(c3), rf));
+  TEST("(?!a?b+){,1}c", rs(r(a1b2c3c3), r(b2), r(b2c3), rf));
+  TEST("(?!a?b*){,1}c", rs(r(a1b2c3c3c3), r(b2c3), r(b2c3), rf));
 
   auto const a1a3c5 = ts{ta1, ta3, tc5};
+  auto const a1a3c5c5 = ts{ta1, ta3, tc5, tc5};
   auto const b2a3c5 = ts{tb2, ta3, tc5};
   auto const b2c5 = ts{tb2, tc5};
   auto const a3c5 = ts{ta3, tc5};
@@ -378,18 +383,18 @@ int main()
   auto const b2a3b4a3b4c5c5c5 = ts{tb2, ta3, tb4, ta3, tb4, tc5, tc5, tc5};
   auto const c5c5 = ts{tc5, tc5};
 
-  TEST("(?!ab){,2}c", rs(r(a1a3c5), r(b2), r(a3c5), r(b4), r(c5), rf));
-  TEST("(?!ab?){,2}c", rs(r(a1a3c5), r(b2a3), r(a3c5), r(b4c5), r(c5), rf));
-  TEST("(?!ab+){,2}c", rs(r(a1a3c5), r(b2), r(b2a3c5), r(b4), r(b4c5), rf));
-  TEST("(?!ab*){,2}c", rs(r(a1a3c5), r(b2a3), r(b2a3c5), r(b4c5), r(b4c5), rf));
-  TEST("(?!a?b){,2}c", rs(r(a1b2a3b4c5), r(b2), r(a3b4c5), r(b4), r(c5), rf));
-  TEST("(?!a+b){,2}c", rs(r(a1a3c5), r(a1b2), r(a3c5), r(a3b4), r(c5), rf));
-  TEST("(?!a*b){,2}c", rs(r(a1b2a3b4c5), r(a1b2), r(a3b4c5), r(a3b4), r(c5), rf));
-  TEST("(?!a?b?){,2}c", rs(r(a1b2a3b4a3b4c5), r(b2a3b4a3b4c5c5), r(a3b4a3b4c5c5c5), r(b4c5), r(c5c5), rf));
-  TEST("(?!a+b?){,2}c", rs(r(a1a3c5), r(a1b2a3), r(a3c5), r(a3b4c5), r(c5), rf));
-  TEST("(?!a*b?){,2}c", rs(r(a1b2a3b4a3b4c5), r(a1b2a3b4a3b4c5c5), r(a3b4a3b4c5c5c5), r(a3b4c5), r(c5c5), rf));
-  TEST("(?!a?b+){,2}c", rs(r(a1b2a3b4c5), r(b2), r(b2a3b4c5), r(b4), r(b4c5), rf));
-  TEST("(?!a?b*){,2}c", rs(r(a1b2a3b4a3b4c5), r(b2a3b4a3b4c5c5), r(b2a3b4a3b4c5c5c5), r(b4c5), r(b4c5c5), rf));
+  TEST("(?!ab){,2}c", rs(r(a1a3c5c5), r(b2), r(a3c5), r(b4), r(c5), rf));
+  TEST("(?!ab?){,2}c", rs(r(a1a3c5c5), r(b2a3), r(a3c5), r(b4c5), r(c5), rf));
+  TEST("(?!ab+){,2}c", rs(r(a1a3c5c5), r(b2), r(b2a3c5), r(b4), r(b4c5), rf));
+  TEST("(?!ab*){,2}c", rs(r(a1a3c5c5), r(b2a3), r(b2a3c5), r(b4c5), r(b4c5), rf));
+  TEST("(?!a?b){,2}c", rs(r(a1b2a3b4c5c5), r(b2), r(a3b4c5), r(b4), r(c5), rf));
+  TEST("(?!a+b){,2}c", rs(r(a1a3c5c5), r(a1b2), r(a3c5), r(a3b4), r(c5), rf));
+  TEST("(?!a*b){,2}c", rs(r(a1b2a3b4c5c5), r(a1b2), r(a3b4c5), r(a3b4), r(c5), rf));
+  TEST("(?!a?b?){,2}c", rs(r(a1b2a3b4a3b4c5c5), r(b2a3b4a3b4c5c5), r(a3b4a3b4c5c5c5), r(b4c5), r(c5c5), rf));
+  TEST("(?!a+b?){,2}c", rs(r(a1a3c5c5), r(a1b2a3), r(a3c5), r(a3b4c5), r(c5), rf));
+  TEST("(?!a*b?){,2}c", rs(r(a1b2a3b4a3b4c5c5), r(a1b2a3b4a3b4c5c5), r(a3b4a3b4c5c5c5), r(a3b4c5), r(c5c5), rf));
+  TEST("(?!a?b+){,2}c", rs(r(a1b2a3b4c5c5), r(b2), r(b2a3b4c5), r(b4), r(b4c5), rf));
+  TEST("(?!a?b*){,2}c", rs(r(a1b2a3b4a3b4c5c5), r(b2a3b4a3b4c5c5), r(b2a3b4a3b4c5c5c5), r(b4c5), r(b4c5c5), rf));
 
   auto const a1a3a5c7 = ts{ta1, ta3, ta5, tc7};
   auto const a1b2a3a5 = ts{ta1, tb2, ta3, ta5};
@@ -412,22 +417,25 @@ int main()
   auto const b4a5c7c7 = ts{tb4, ta5, tc7, tc7};
   auto const b6c7c7 = ts{tb6, tc7, tc7};
   auto const c7c7 = ts{tc7, tc7};
-  
-  TEST("(?!ab){,3}c", rs(r(a1a3a5c7), r(b2), r(a3a5c7), r(b4), r(a5c7), r(b6), r(c7), rf));
-  TEST("(?!ab?){,3}c", rs(r(a1a3a5c7), r(b2a3a5), r(a3a5a5c7), r(b4a5c7), r(a5c7c7), r(b6c7), r(c7), rf));
-  TEST("(?!ab+){,3}c", rs(r(a1a3a5c7), r(b2), r(b2a3a5c7), r(b4), r(b4a5c7), r(b6), r(b6c7), rf));
-  TEST("(?!ab*){,3}c", rs(r(a1a3a5c7), r(b2a3a5), r(b2a3a5a5c7), r(b4a5c7), r(b4a5c7c7), r(b6c7), r(b6c7), rf));
-  TEST("(?!a?b){,3}c", rs(r(a1b2a3b4a5b6c7), r(b2), r(a3b4a5b6c7), r(b4), r(a5b6c7), r(b6), r(c7), rf));
-  TEST("(?!a+b){,3}c", rs(r(a1a3a5c7), r(a1b2), r(a3a5c7), r(a3b4), r(a5c7), r(a5b6), r(c7), rf));
-  TEST("(?!a*b){,3}c", rs(r(a1b2a3b4a5b6c7), r(a1b2), r(a3b4a5b6c7), r(a3b4), r(a5b6c7), r(a5b6), r(c7), rf));
-  TEST("(?!a?b?){,3}c", rs(r(a1b2a3b4a3b4a5b6c7), r(b2a3b4a3b4a5b6a5b6c7c7), r(a3b4a3b4a5b6a5b6a5b6c7c7), r(b4a5b6c7), r(a5b6a5b6c7c7c7), r(b6c7), r(c7c7), rf));
-  TEST("(?!a+b?){,3}c", rs(r(a1a3a5c7), r(a1b2a3a5), r(a3a5a5c7), r(a3b4a5c7), r(a5c7c7), r(a5b6c7), r(c7), rf));
-  TEST("(?!a*b?){,3}c", rs(r(a1b2a3b4a3b4a5b6c7), r(a1b2a3b4a3b4a5b6a5b6c7c7), r(a3b4a3b4a5b6a5b6a5b6c7c7), r(a3b4a5b6c7), r(a5b6a5b6c7c7c7), r(a5b6c7), r(c7c7), rf));
-  TEST("(?!a?b+){,3}c", rs(r(a1b2a3b4a5b6c7), r(b2), r(b2a3b4a5b6c7), r(b4), r(b4a5b6c7), r(b6), r(b6c7), rf));
-  TEST("(?!a?b*){,3}c", rs(r(a1b2a3b4a3b4a5b6c7), r(b2a3b4a3b4a5b6a5b6c7c7), r(b2a3b4a3b4a5b6a5b6a5b6c7c7), r(b4a5b6c7), r(b4a5b6a5b6c7c7c7), r(b6c7), r(b6c7c7), rf));
+  auto const a1a3a5c7c7 = ts{ta1, ta3, ta5, tc7, tc7};
+  auto const a1b2a3b4a3b4a5b6c7c7 = ts{ta1, tb2, ta3, tb4, ta3, tb4, ta5, tb6, tc7, tc7};
+
+  TEST("(?!ab){,3}c", rs(r(a1a3a5c7c7), r(b2), r(a3a5c7), r(b4), r(a5c7), r(b6), r(c7), rf));
+  TEST("(?!ab?){,3}c", rs(r(a1a3a5c7c7), r(b2a3a5), r(a3a5a5c7), r(b4a5c7), r(a5c7c7), r(b6c7), r(c7), rf));
+  TEST("(?!ab+){,3}c", rs(r(a1a3a5c7c7), r(b2), r(b2a3a5c7), r(b4), r(b4a5c7), r(b6), r(b6c7), rf));
+  TEST("(?!ab*){,3}c", rs(r(a1a3a5c7c7), r(b2a3a5), r(b2a3a5a5c7), r(b4a5c7), r(b4a5c7c7), r(b6c7), r(b6c7), rf));
+  TEST("(?!a?b){,3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2), r(a3b4a5b6c7), r(b4), r(a5b6c7), r(b6), r(c7), rf));
+  TEST("(?!a+b){,3}c", rs(r(a1a3a5c7c7), r(a1b2), r(a3a5c7), r(a3b4), r(a5c7), r(a5b6), r(c7), rf));
+  TEST("(?!a*b){,3}c", rs(r(a1b2a3b4a5b6c7c7), r(a1b2), r(a3b4a5b6c7), r(a3b4), r(a5b6c7), r(a5b6), r(c7), rf));
+  TEST("(?!a?b?){,3}c", rs(r(a1b2a3b4a3b4a5b6c7c7), r(b2a3b4a3b4a5b6a5b6c7c7), r(a3b4a3b4a5b6a5b6a5b6c7c7), r(b4a5b6c7), r(a5b6a5b6c7c7c7), r(b6c7), r(c7c7), rf));
+  TEST("(?!a+b?){,3}c", rs(r(a1a3a5c7c7), r(a1b2a3a5), r(a3a5a5c7), r(a3b4a5c7), r(a5c7c7), r(a5b6c7), r(c7), rf));
+  TEST("(?!a*b?){,3}c", rs(r(a1b2a3b4a3b4a5b6c7c7), r(a1b2a3b4a3b4a5b6a5b6c7c7), r(a3b4a3b4a5b6a5b6a5b6c7c7), r(a3b4a5b6c7), r(a5b6a5b6c7c7c7), r(a5b6c7), r(c7c7), rf));
+  TEST("(?!a?b+){,3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2), r(b2a3b4a5b6c7), r(b4), r(b4a5b6c7), r(b6), r(b6c7), rf));
+  TEST("(?!a?b*){,3}c", rs(r(a1b2a3b4a3b4a5b6c7c7), r(b2a3b4a3b4a5b6a5b6c7c7), r(b2a3b4a3b4a5b6a5b6a5b6c7c7), r(b4a5b6c7), r(b4a5b6a5b6c7c7c7), r(b6c7), r(b6c7c7), rf));
 
   auto const b2a1c3 = ts{tb2, ta1, tc3};
   auto const a1b2a1b2c3 = ts{ta1, tb2, ta1, tb2, tc3};
+  auto const a1b2a1b2c3c3 = ts{ta1, tb2, ta1, tb2, tc3, tc3};
   auto const a1b2a1c3 = ts{ta1, tb2, ta1, tc3};
   auto const b2a1b2c3 = ts{tb2, ta1, tb2, tc3};
   
@@ -438,11 +446,11 @@ int main()
   TEST("(?!a?b){1,}c", rs(r(a1b2), r(b2), r(a1b2c3), rf));
   TEST("(?!a+b){1,}c", rs(r(a1), r(a1b2), r(a1c3), rf));
   TEST("(?!a*b){1,}c", rs(r(a1b2), r(a1b2), r(a1b2c3), rf));
-  TEST("(?!a?b?){1,}c", rs(r(a1b2a1b2c3), r(b2a1b2c3), r(a1b2c3), rf));
+  TEST("(?!a?b?){1,}c", rs(r(a1b2a1b2c3c3), r(b2a1b2c3), r(a1b2c3), rf));
   TEST("(?!a+b?){1,}c", rs(r(a1), r(a1b2a1c3), r(a1c3), rf));
-  TEST("(?!a*b?){1,}c", rs(r(a1b2a1b2c3), r(a1b2a1b2c3), r(a1b2c3), rf));
+  TEST("(?!a*b?){1,}c", rs(r(a1b2a1b2c3c3), r(a1b2a1b2c3), r(a1b2c3), rf));
   TEST("(?!a?b+){1,}c", rs(r(a1b2), r(b2), r(b2a1b2c3), rf));
-  TEST("(?!a?b*){1,}c", rs(r(a1b2a1b2c3), r(b2a1b2c3), r(b2a1b2c3), rf));
+  TEST("(?!a?b*){1,}c", rs(r(a1b2a1b2c3c3), r(b2a1b2c3), r(b2a1b2c3), rf));
 
   auto const b4a3c5 = ts{tb4, ta3, tc5};
   auto const b2a3b4a3b4c5 = ts{tb2, ta3, tb4, ta3, tb4, tc5};
@@ -457,14 +465,15 @@ int main()
   TEST("(?!a?b){2,}c", rs(r(a1b2), r(b2), r(a3b4), r(b4), r(a3b4c5), rf));
   TEST("(?!a+b){2,}c", rs(r(a1), r(a1b2), r(a3), r(a3b4), r(a3c5), rf));
   TEST("(?!a*b){2,}c", rs(r(a1b2), r(a1b2), r(a3b4), r(a3b4), r(a3b4c5), rf));
-  TEST("(?!a?b?){2,}c", rs(r(a1b2a3b4a3b4c5), r(b2a3b4a3b4c5), r(a3b4a3b4c5), r(b4a3b4c5), r(a3b4c5), rf));
+  TEST("(?!a?b?){2,}c", rs(r(a1b2a3b4a3b4c5c5), r(b2a3b4a3b4c5), r(a3b4a3b4c5), r(b4a3b4c5), r(a3b4c5), rf));
   TEST("(?!a+b?){2,}c", rs(r(a1), r(a1b2a3), r(a3), r(a3b4a3c5), r(a3c5), rf));
-  TEST("(?!a*b?){2,}c", rs(r(a1b2a3b4a3b4c5), r(a1b2a3b4a3b4c5), r(a3b4a3b4c5), r(a3b4a3b4c5), r(a3b4c5), rf));
+  TEST("(?!a*b?){2,}c", rs(r(a1b2a3b4a3b4c5c5), r(a1b2a3b4a3b4c5), r(a3b4a3b4c5), r(a3b4a3b4c5), r(a3b4c5), rf));
   TEST("(?!a?b+){2,}c", rs(r(a1b2), r(b2), r(b2a3b4), r(b4), r(b4a3b4c5), rf));
-  TEST("(?!a?b*){2,}c", rs(r(a1b2a3b4a3b4c5), r(b2a3b4a3b4c5), r(b2a3b4a3b4c5), r(b4a3b4c5), r(b4a3b4c5), rf));
+  TEST("(?!a?b*){2,}c", rs(r(a1b2a3b4a3b4c5c5), r(b2a3b4a3b4c5), r(b2a3b4a3b4c5), r(b4a3b4c5), r(b4a3b4c5), rf));
 
   auto const b6a5c7 = ts{tb6, ta5, tc7};
   auto const a1b2a3b4a5b6a5b6c7 = ts{ta1, tb2, ta3, tb4, ta5, tb6, ta5, tb6, tc7};
+  auto const a1b2a3b4a5b6a5b6c7c7 = ts{ta1, tb2, ta3, tb4, ta5, tb6, ta5, tb6, tc7, tc7};
   auto const b2a3b4a5b6a5b6c7 = ts{tb2, ta3, tb4, ta5, tb6, ta5, tb6, tc7};
   auto const a3b4a5b6a5b6c7 = ts{ta3, tb4, ta5, tb6, ta5, tb6, tc7};
   auto const b4a5b6a5b6c7 = ts{tb4, ta5, tb6, ta5, tb6, tc7};
@@ -479,128 +488,175 @@ int main()
   TEST("(?!a?b){3,}c", rs(r(a1b2), r(b2), r(a3b4), r(b4), r(a5b6), r(b6), r(a5b6c7), rf));
   TEST("(?!a+b){3,}c", rs(r(a1), r(a1b2), r(a3), r(a3b4), r(a5), r(a5b6), r(a5c7), rf));
   TEST("(?!a*b){3,}c", rs(r(a1b2), r(a1b2), r(a3b4), r(a3b4), r(a5b6), r(a5b6), r(a5b6c7), rf));
-  TEST("(?!a?b?){3,}c", rs(r(a1b2a3b4a5b6a5b6c7), r(b2a3b4a5b6a5b6c7), r(a3b4a5b6a5b6c7), r(b4a5b6a5b6c7), r(a5b6a5b6c7), r(b6a5b6c7), r(a5b6c7), rf));
+  TEST("(?!a?b?){3,}c", rs(r(a1b2a3b4a5b6a5b6c7c7), r(b2a3b4a5b6a5b6c7), r(a3b4a5b6a5b6c7), r(b4a5b6a5b6c7), r(a5b6a5b6c7), r(b6a5b6c7), r(a5b6c7), rf));
   TEST("(?!a+b?){3,}c", rs(r(a1), r(a1b2a3), r(a3), r(a3b4a5), r(a5), r(a5b6a5c7), r(a5c7), rf));
-  TEST("(?!a*b?){3,}c", rs(r(a1b2a3b4a5b6a5b6c7), r(a1b2a3b4a5b6a5b6c7), r(a3b4a5b6a5b6c7), r(a3b4a5b6a5b6c7), r(a5b6a5b6c7), r(a5b6a5b6c7), r(a5b6c7), rf));
+  TEST("(?!a*b?){3,}c", rs(r(a1b2a3b4a5b6a5b6c7c7), r(a1b2a3b4a5b6a5b6c7), r(a3b4a5b6a5b6c7), r(a3b4a5b6a5b6c7), r(a5b6a5b6c7), r(a5b6a5b6c7), r(a5b6c7), rf));
   TEST("(?!a?b+){3,}c", rs(r(a1b2), r(b2), r(b2a3b4), r(b4), r(b4a5b6), r(b6), r(b6a5b6c7), rf));
-  TEST("(?!a?b*){3,}c", rs(r(a1b2a3b4a5b6a5b6c7), r(b2a3b4a5b6a5b6c7), r(b2a3b4a5b6a5b6c7), r(b4a5b6a5b6c7), r(b4a5b6a5b6c7), r(b6a5b6c7), r(b6a5b6c7), rf));
+  TEST("(?!a?b*){3,}c", rs(r(a1b2a3b4a5b6a5b6c7c7), r(b2a3b4a5b6a5b6c7), r(b2a3b4a5b6a5b6c7), r(b4a5b6a5b6c7), r(b4a5b6a5b6c7), r(b6a5b6c7), r(b6a5b6c7), rf));
 
-//   TEST("(?!ab){1,1}c", rs(r(a1), r(b2), r(c3), rf));
-//   TEST("(?!ab?){1,1}c", rs(r(a1), r(b2c3), r(c3), rf));
-//   TEST("(?!ab+){1,1}c", rs(r(a1), r(b2), r(b2c3), rf));
-//   TEST("(?!ab*){1,1}c", rs(r(a1), r(b2c3), r(b2c3), rf));
-//   TEST("(?!a?b){1,1}c", rs(r(a1b2), r(b2), r(c3), rf));
-//   TEST("(?!a+b){1,1}c", rs(r(a1), r(a1b2), r(c3), rf));
-//   TEST("(?!a*b){1,1}c", rs(r(a1b2), r(a1b2), r(c3), rf));
-//   TEST("(?!a?b?){1,1}c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
-//   TEST("(?!a+b?){1,1}c", rs(r(a1), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a*b?){1,1}c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a?b+){1,1}c", rs(r(a1b2), r(b2), r(b2c3), rf));
-//   TEST("(?!a?b*){1,1}c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
-// 
-//   TEST("(?!ab){1,2}c", rs(r(a1), r(b2), r(c3), rf));
-//   TEST("(?!ab?){1,2}c", rs(r(a1), r(b2c3), r(c3), rf));
-//   TEST("(?!ab+){1,2}c", rs(r(a1), r(b2), r(b2c3), rf));
-//   TEST("(?!ab*){1,2}c", rs(r(a1), r(b2c3), r(b2c3), rf));
-//   TEST("(?!a?b){1,2}c", rs(r(a1b2), r(b2), r(c3), rf));
-//   TEST("(?!a+b){1,2}c", rs(r(a1), r(a1b2), r(c3), rf));
-//   TEST("(?!a*b){1,2}c", rs(r(a1b2), r(a1b2), r(c3), rf));
-//   TEST("(?!a?b?){1,2}c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
-//   TEST("(?!a+b?){1,2}c", rs(r(a1), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a*b?){1,2}c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a?b+){1,2}c", rs(r(a1b2), r(b2), r(b2c3), rf));
-//   TEST("(?!a?b*){1,2}c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
-// 
-//   TEST("(?!ab){1,3}c", rs(r(a1), r(b2), r(c3), rf));
-//   TEST("(?!ab?){1,3}c", rs(r(a1), r(b2c3), r(c3), rf));
-//   TEST("(?!ab+){1,3}c", rs(r(a1), r(b2), r(b2c3), rf));
-//   TEST("(?!ab*){1,3}c", rs(r(a1), r(b2c3), r(b2c3), rf));
-//   TEST("(?!a?b){1,3}c", rs(r(a1b2), r(b2), r(c3), rf));
-//   TEST("(?!a+b){1,3}c", rs(r(a1), r(a1b2), r(c3), rf));
-//   TEST("(?!a*b){1,3}c", rs(r(a1b2), r(a1b2), r(c3), rf));
-//   TEST("(?!a?b?){1,3}c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
-//   TEST("(?!a+b?){1,3}c", rs(r(a1), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a*b?){1,3}c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a?b+){1,3}c", rs(r(a1b2), r(b2), r(b2c3), rf));
-//   TEST("(?!a?b*){1,3}c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
-// 
-//   TEST("(?!ab){2,2}c", rs(r(a1), r(b2), r(c3), rf));
-//   TEST("(?!ab?){2,2}c", rs(r(a1), r(b2c3), r(c3), rf));
-//   TEST("(?!ab+){2,2}c", rs(r(a1), r(b2), r(b2c3), rf));
-//   TEST("(?!ab*){2,2}c", rs(r(a1), r(b2c3), r(b2c3), rf));
-//   TEST("(?!a?b){2,2}c", rs(r(a1b2), r(b2), r(c3), rf));
-//   TEST("(?!a+b){2,2}c", rs(r(a1), r(a1b2), r(c3), rf));
-//   TEST("(?!a*b){2,2}c", rs(r(a1b2), r(a1b2), r(c3), rf));
-//   TEST("(?!a?b?){2,2}c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
-//   TEST("(?!a+b?){2,2}c", rs(r(a1), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a*b?){2,2}c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a?b+){2,2}c", rs(r(a1b2), r(b2), r(b2c3), rf));
-//   TEST("(?!a?b*){2,2}c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
-// 
-//   TEST("(?!ab){2,3}c", rs(r(a1), r(b2), r(c3), rf));
-//   TEST("(?!ab?){2,3}c", rs(r(a1), r(b2c3), r(c3), rf));
-//   TEST("(?!ab+){2,3}c", rs(r(a1), r(b2), r(b2c3), rf));
-//   TEST("(?!ab*){2,3}c", rs(r(a1), r(b2c3), r(b2c3), rf));
-//   TEST("(?!a?b){2,3}c", rs(r(a1b2), r(b2), r(c3), rf));
-//   TEST("(?!a+b){2,3}c", rs(r(a1), r(a1b2), r(c3), rf));
-//   TEST("(?!a*b){2,3}c", rs(r(a1b2), r(a1b2), r(c3), rf));
-//   TEST("(?!a?b?){2,3}c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
-//   TEST("(?!a+b?){2,3}c", rs(r(a1), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a*b?){2,3}c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a?b+){2,3}c", rs(r(a1b2), r(b2), r(b2c3), rf));
-//   TEST("(?!a?b*){2,3}c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
-// 
-//   TEST("(?!ab){3,3}c", rs(r(a1), r(b2), r(c3), rf));
-//   TEST("(?!ab?){3,3}c", rs(r(a1), r(b2c3), r(c3), rf));
-//   TEST("(?!ab+){3,3}c", rs(r(a1), r(b2), r(b2c3), rf));
-//   TEST("(?!ab*){3,3}c", rs(r(a1), r(b2c3), r(b2c3), rf));
-//   TEST("(?!a?b){3,3}c", rs(r(a1b2), r(b2), r(c3), rf));
-//   TEST("(?!a+b){3,3}c", rs(r(a1), r(a1b2), r(c3), rf));
-//   TEST("(?!a*b){3,3}c", rs(r(a1b2), r(a1b2), r(c3), rf));
-//   TEST("(?!a?b?){3,3}c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
-//   TEST("(?!a+b?){3,3}c", rs(r(a1), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a*b?){3,3}c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a?b+){3,3}c", rs(r(a1b2), r(b2), r(b2c3), rf));
-//   TEST("(?!a?b*){3,3}c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
-// 
-//   TEST("(?!ab)?c", rs(r(a1), r(b2), r(c3), rf));
-//   TEST("(?!ab?)?c", rs(r(a1), r(b2c3), r(c3), rf));
-//   TEST("(?!ab+)?c", rs(r(a1), r(b2), r(b2c3), rf));
-//   TEST("(?!ab*)?c", rs(r(a1), r(b2c3), r(b2c3), rf));
-//   TEST("(?!a?b)?c", rs(r(a1b2), r(b2), r(c3), rf));
-//   TEST("(?!a+b)?c", rs(r(a1), r(a1b2), r(c3), rf));
-//   TEST("(?!a*b)?c", rs(r(a1b2), r(a1b2), r(c3), rf));
-//   TEST("(?!a?b?)?c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
-//   TEST("(?!a+b?)?c", rs(r(a1), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a*b?)?c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a?b+)?c", rs(r(a1b2), r(b2), r(b2c3), rf));
-//   TEST("(?!a?b*)?c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
-// 
-//   TEST("(?!ab)+c", rs(r(a1), r(b2), r(c3), rf));
-//   TEST("(?!ab?)+c", rs(r(a1), r(b2c3), r(c3), rf));
-//   TEST("(?!ab+)+c", rs(r(a1), r(b2), r(b2c3), rf));
-//   TEST("(?!ab*)+c", rs(r(a1), r(b2c3), r(b2c3), rf));
-//   TEST("(?!a?b)+c", rs(r(a1b2), r(b2), r(c3), rf));
-//   TEST("(?!a+b)+c", rs(r(a1), r(a1b2), r(c3), rf));
-//   TEST("(?!a*b)+c", rs(r(a1b2), r(a1b2), r(c3), rf));
-//   TEST("(?!a?b?)+c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
-//   TEST("(?!a+b?)+c", rs(r(a1), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a*b?)+c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a?b+)+c", rs(r(a1b2), r(b2), r(b2c3), rf));
-//   TEST("(?!a?b*)+c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
-// 
-//   TEST("(?!ab)*c", rs(r(a1), r(b2), r(c3), rf));
-//   TEST("(?!ab?)*c", rs(r(a1), r(b2c3), r(c3), rf));
-//   TEST("(?!ab+)*c", rs(r(a1), r(b2), r(b2c3), rf));
-//   TEST("(?!ab*)*c", rs(r(a1), r(b2c3), r(b2c3), rf));
-//   TEST("(?!a?b)*c", rs(r(a1b2), r(b2), r(c3), rf));
-//   TEST("(?!a+b)*c", rs(r(a1), r(a1b2), r(c3), rf));
-//   TEST("(?!a*b)*c", rs(r(a1b2), r(a1b2), r(c3), rf));
-//   TEST("(?!a?b?)*c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
-//   TEST("(?!a+b?)*c", rs(r(a1), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a*b?)*c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
-//   TEST("(?!a?b+)*c", rs(r(a1b2), r(b2), r(b2c3), rf));
-//   TEST("(?!a?b*)*c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
+  TEST("(?!ab){1,1}c", rs(r(a1), r(b2), r(c3), rf));
+  TEST("(?!ab?){1,1}c", rs(r(a1), r(b2c3), r(c3), rf));
+  TEST("(?!ab+){1,1}c", rs(r(a1), r(b2), r(b2c3), rf));
+  TEST("(?!ab*){1,1}c", rs(r(a1), r(b2c3), r(b2c3), rf));
+  TEST("(?!a?b){1,1}c", rs(r(a1b2), r(b2), r(c3), rf));
+  TEST("(?!a+b){1,1}c", rs(r(a1), r(a1b2), r(c3), rf));
+  TEST("(?!a*b){1,1}c", rs(r(a1b2), r(a1b2), r(c3), rf));
+  TEST("(?!a?b?){1,1}c", rs(r(a1b2c3c3), r(b2c3), r(c3), rf));
+  TEST("(?!a+b?){1,1}c", rs(r(a1), r(a1b2c3), r(c3), rf));
+  TEST("(?!a*b?){1,1}c", rs(r(a1b2c3c3), r(a1b2c3), r(c3), rf));
+  TEST("(?!a?b+){1,1}c", rs(r(a1b2), r(b2), r(b2c3), rf));
+  TEST("(?!a?b*){1,1}c", rs(r(a1b2c3c3), r(b2c3), r(b2c3), rf));
+
+  auto const b2a3b4c5c5 = ts{tb2, ta3, tb4, tc5, tc5};
+  auto const a3b4c5c5 = ts{ta3, tb4, tc5, tc5};
+  auto const a1b2a3c5 = ts{ta1, tb2, ta3, tc5};
+  
+  TEST("(?!ab){1,2}c", rs(r(a1), r(b2), r(a3c5), r(b4), r(c5), rf));
+  TEST("(?!ab?){1,2}c", rs(r(a1), r(b2a3c5), r(a3c5), r(b4c5), r(c5), rf));
+  TEST("(?!ab+){1,2}c", rs(r(a1), r(b2), r(b2a3c5), r(b4), r(b4c5), rf));
+  TEST("(?!ab*){1,2}c", rs(r(a1), r(b2a3c5), r(b2a3c5), r(b4c5), r(b4c5), rf));
+  TEST("(?!a?b){1,2}c", rs(r(a1b2), r(b2), r(a3b4c5), r(b4), r(c5), rf));
+  TEST("(?!a+b){1,2}c", rs(r(a1), r(a1b2), r(a3c5), r(a3b4), r(c5), rf));
+  TEST("(?!a*b){1,2}c", rs(r(a1b2), r(a1b2), r(a3b4c5), r(a3b4), r(c5), rf));
+  TEST("(?!a?b?){1,2}c", rs(r(a1b2a3b4c5c5), r(b2a3b4c5c5), r(a3b4c5c5), r(b4c5), r(c5), rf));
+  TEST("(?!a+b?){1,2}c", rs(r(a1), r(a1b2a3c5), r(a3c5), r(a3b4c5), r(c5), rf));
+  TEST("(?!a*b?){1,2}c", rs(r(a1b2a3b4c5c5), r(a1b2a3b4c5c5), r(a3b4c5c5), r(a3b4c5), r(c5), rf));
+  TEST("(?!a?b+){1,2}c", rs(r(a1b2), r(b2), r(b2a3b4c5), r(b4), r(b4c5), rf));
+  TEST("(?!a?b*){1,2}c", rs(r(a1b2a3b4c5c5), r(b2a3b4c5c5), r(b2a3b4c5c5), r(b4c5), r(b4c5), rf));
+
+  auto const a3c7 = ts{ta3, tc7};
+  auto const b2a3c7 = ts{tb2, ta3, tc7};
+  auto const a3b4c7 = ts{ta3, tb4, tc7};
+  auto const b2a3b4a5b6c7c7 = ts{tb2, ta3, tb4, ta5, tb6, tc7, tc7};
+  auto const a3b4a5b6c7c7 = ts{ta3, tb4, ta5, tb6, tc7, tc7};
+  auto const a1b2a3c7 = ts{ta1, tb2, ta3, tc7};
+  auto const b2a3b4c7 = ts{tb2, ta3, tb4, tc7};
+  
+  TEST("(?!ab){1,3}c", rs(r(a1), r(b2), r(a3c7), r(b4), r(a5c7), r(b6), r(c7), rf));
+  TEST("(?!ab?){1,3}c", rs(r(a1), r(b2a3c7), r(a3c7), r(b4a5c7), r(a5c7), r(b6c7), r(c7), rf));
+  TEST("(?!ab+){1,3}c", rs(r(a1), r(b2), r(b2a3c7), r(b4), r(b4a5c7), r(b6), r(b6c7), rf));
+  TEST("(?!ab*){1,3}c", rs(r(a1), r(b2a3c7), r(b2a3c7), r(b4a5c7), r(b4a5c7), r(b6c7), r(b6c7), rf));
+  TEST("(?!a?b){1,3}c", rs(r(a1b2), r(b2), r(a3b4c7), r(b4), r(a5b6c7), r(b6), r(c7), rf));
+  TEST("(?!a+b){1,3}c", rs(r(a1), r(a1b2), r(a3c7), r(a3b4), r(a5c7), r(a5b6), r(c7), rf));
+  TEST("(?!a*b){1,3}c", rs(r(a1b2), r(a1b2), r(a3b4c7), r(a3b4), r(a5b6c7), r(a5b6), r(c7), rf));
+  TEST("(?!a?b?){1,3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2a3b4a5b6c7c7), r(a3b4a5b6c7c7), r(b4a5b6c7), r(a5b6c7), r(b6c7), r(c7), rf));
+  TEST("(?!a+b?){1,3}c", rs(r(a1), r(a1b2a3c7), r(a3c7), r(a3b4a5c7), r(a5c7), r(a5b6c7), r(c7), rf));
+  TEST("(?!a*b?){1,3}c", rs(r(a1b2a3b4a5b6c7c7), r(a1b2a3b4a5b6c7c7), r(a3b4a5b6c7c7), r(a3b4a5b6c7), r(a5b6c7), r(a5b6c7), r(c7), rf));
+  TEST("(?!a?b+){1,3}c", rs(r(a1b2), r(b2), r(b2a3b4c7), r(b4), r(b4a5b6c7), r(b6), r(b6c7), rf));
+  TEST("(?!a?b*){1,3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2a3b4a5b6c7c7), r(b2a3b4a5b6c7c7), r(b4a5b6c7), r(b4a5b6c7), r(b6c7), r(b6c7), rf));
+  
+  TEST("(?!ab){2,2}c", rs(r(a1), r(b2), r(a3), r(b4), r(c5), rf));
+  TEST("(?!ab?){2,2}c", rs(r(a1), r(b2a3), r(a3), r(b4c5), r(c5), rf));
+  TEST("(?!ab+){2,2}c", rs(r(a1), r(b2), r(b2a3), r(b4), r(b4c5), rf));
+  TEST("(?!ab*){2,2}c", rs(r(a1), r(b2a3), r(b2a3), r(b4c5), r(b4c5), rf));
+  TEST("(?!a?b){2,2}c", rs(r(a1b2), r(b2), r(a3b4), r(b4), r(c5), rf));
+  TEST("(?!a+b){2,2}c", rs(r(a1), r(a1b2), r(a3), r(a3b4), r(c5), rf));
+  TEST("(?!a*b){2,2}c", rs(r(a1b2), r(a1b2), r(a3b4), r(a3b4), r(c5), rf));
+  TEST("(?!a?b?){2,2}c", rs(r(a1b2a3b4c5c5), r(b2a3b4c5), r(a3b4c5), r(b4c5), r(c5), rf));
+  TEST("(?!a+b?){2,2}c", rs(r(a1), r(a1b2a3), r(a3), r(a3b4c5), r(c5), rf));
+  TEST("(?!a*b?){2,2}c", rs(r(a1b2a3b4c5c5), r(a1b2a3b4c5), r(a3b4c5), r(a3b4c5), r(c5), rf));
+  TEST("(?!a?b+){2,2}c", rs(r(a1b2), r(b2), r(b2a3b4), r(b4), r(b4c5), rf));
+  TEST("(?!a?b*){2,2}c", rs(r(a1b2a3b4c5c5), r(b2a3b4c5), r(b2a3b4c5), r(b4c5), r(b4c5), rf));
+
+  auto const a5b6c7c7 = ts{ta5, tb6, tc7, tc7};
+  auto const b4a5b6c7c7 = ts{tb4, ta5, tb6, tc7, tc7};
+  
+  TEST("(?!ab){2,3}c", rs(r(a1), r(b2), r(a3), r(b4), r(a5c7), r(b6), r(c7), rf));
+  TEST("(?!ab?){2,3}c", rs(r(a1), r(b2a3), r(a3), r(b4a5c7), r(a5c7), r(b6c7), r(c7), rf));
+  TEST("(?!ab+){2,3}c", rs(r(a1), r(b2), r(b2a3), r(b4), r(b4a5c7), r(b6), r(b6c7), rf));
+  TEST("(?!ab*){2,3}c", rs(r(a1), r(b2a3), r(b2a3), r(b4a5c7), r(b4a5c7), r(b6c7), r(b6c7), rf));
+  TEST("(?!a?b){2,3}c", rs(r(a1b2), r(b2), r(a3b4), r(b4), r(a5b6c7), r(b6), r(c7), rf));
+  TEST("(?!a+b){2,3}c", rs(r(a1), r(a1b2), r(a3), r(a3b4), r(a5c7), r(a5b6), r(c7), rf));
+  TEST("(?!a*b){2,3}c", rs(r(a1b2), r(a1b2), r(a3b4), r(a3b4), r(a5b6c7), r(a5b6), r(c7), rf));
+  TEST("(?!a?b?){2,3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2a3b4a5b6c7c7), r(a3b4a5b6c7c7), r(b4a5b6c7c7), r(a5b6c7c7), r(b6c7), r(c7), rf));
+  TEST("(?!a+b?){2,3}c", rs(r(a1), r(a1b2a3), r(a3), r(a3b4a5c7), r(a5c7), r(a5b6c7), r(c7), rf));
+  TEST("(?!a*b?){2,3}c", rs(r(a1b2a3b4a5b6c7c7), r(a1b2a3b4a5b6c7c7), r(a3b4a5b6c7c7), r(a3b4a5b6c7c7), r(a5b6c7c7), r(a5b6c7), r(c7), rf));
+  TEST("(?!a?b+){2,3}c", rs(r(a1b2), r(b2), r(b2a3b4), r(b4), r(b4a5b6c7), r(b6), r(b6c7), rf));
+  TEST("(?!a?b*){2,3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2a3b4a5b6c7c7), r(b2a3b4a5b6c7c7), r(b4a5b6c7c7), r(b4a5b6c7c7), r(b6c7), r(b6c7), rf));
+
+  auto const b6a5 = ts{tb6, ta5};
+
+  TEST("(?!ab){3,3}c", rs(r(a1), r(b2), r(a3), r(b4), r(a5), r(b6), r(c7), rf));
+  TEST("(?!ab?){3,3}c", rs(r(a1), r(b2a3), r(a3), r(b4a5), r(a5), r(b6c7), r(c7), rf));
+  TEST("(?!ab+){3,3}c", rs(r(a1), r(b2), r(b2a3), r(b4), r(b4a5), r(b6), r(b6c7), rf));
+  TEST("(?!ab*){3,3}c", rs(r(a1), r(b2a3), r(b2a3), r(b4a5), r(b4a5), r(b6c7), r(b6c7), rf));
+  TEST("(?!a?b){3,3}c", rs(r(a1b2), r(b2), r(a3b4), r(b4), r(a5b6), r(b6), r(c7), rf));
+  TEST("(?!a+b){3,3}c", rs(r(a1), r(a1b2), r(a3), r(a3b4), r(a5), r(a5b6), r(c7), rf));
+  TEST("(?!a*b){3,3}c", rs(r(a1b2), r(a1b2), r(a3b4), r(a3b4), r(a5b6), r(a5b6), r(c7), rf));
+  TEST("(?!a?b?){3,3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2a3b4a5b6c7), r(a3b4a5b6c7), r(b4a5b6c7), r(a5b6c7), r(b6c7), r(c7), rf));
+  TEST("(?!a+b?){3,3}c", rs(r(a1), r(a1b2a3), r(a3), r(a3b4a5), r(a5), r(a5b6c7), r(c7), rf));
+  TEST("(?!a*b?){3,3}c", rs(r(a1b2a3b4a5b6c7c7), r(a1b2a3b4a5b6c7), r(a3b4a5b6c7), r(a3b4a5b6c7), r(a5b6c7), r(a5b6c7), r(c7), rf));
+  TEST("(?!a?b+){3,3}c", rs(r(a1b2), r(b2), r(b2a3b4), r(b4), r(b4a5b6), r(b6), r(b6c7), rf));
+  TEST("(?!a?b*){3,3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2a3b4a5b6c7), r(b2a3b4a5b6c7), r(b4a5b6c7), r(b4a5b6c7), r(b6c7), r(b6c7), rf));
+
+  TEST("(?!ab)?c", rs(r(a1c3), r(b2), r(c3), rf));
+  TEST("(?!ab?)?c", rs(r(a1c3), r(b2c3), r(c3), rf));
+  TEST("(?!ab+)?c", rs(r(a1c3), r(b2), r(b2c3), rf));
+  TEST("(?!ab*)?c", rs(r(a1c3), r(b2c3), r(b2c3), rf));
+  TEST("(?!a?b)?c", rs(r(a1b2c3), r(b2), r(c3), rf));
+  TEST("(?!a+b)?c", rs(r(a1c3), r(a1b2), r(c3), rf));
+  TEST("(?!a*b)?c", rs(r(a1b2c3), r(a1b2), r(c3), rf));
+  TEST("(?!a?b?)?c", rs(r(a1b2c3c3), r(b2c3), r(c3), rf));
+  TEST("(?!a+b?)?c", rs(r(a1c3), r(a1b2c3), r(c3), rf));
+  TEST("(?!a*b?)?c", rs(r(a1b2c3c3), r(a1b2c3), r(c3), rf));
+  TEST("(?!a?b+)?c", rs(r(a1b2c3), r(b2), r(b2c3), rf));
+  TEST("(?!a?b*)?c", rs(r(a1b2c3c3), r(b2c3), r(b2c3), rf));
+
+  auto const b2a1b2c3c3 = ts{tb2, ta1, tb2, tc3, tc3};
+
+  TEST("(?!ab)+c", rs(r(a1), r(b2), r(a1c3), rf));
+  TEST("(?!ab?)+c", rs(r(a1), r(b2a1c3), r(a1c3), rf));
+  TEST("(?!ab+)+c", rs(r(a1), r(b2), r(b2a1c3), rf));
+  TEST("(?!ab*)+c", rs(r(a1), r(b2a1c3), r(b2a1c3), rf));
+  TEST("(?!a?b)+c", rs(r(a1b2), r(b2), r(a1b2c3), rf));
+  TEST("(?!a+b)+c", rs(r(a1), r(a1b2), r(a1c3), rf));
+  TEST("(?!a*b)+c", rs(r(a1b2), r(a1b2), r(a1b2c3), rf));
+  TEST("(?!a?b?)+c", rs(r(a1b2a1b2c3c3), r(b2a1b2c3), r(a1b2c3), rf));
+  TEST("(?!a+b?)+c", rs(r(a1), r(a1b2a1c3), r(a1c3), rf));
+  TEST("(?!a*b?)+c", rs(r(a1b2a1b2c3c3), r(a1b2a1b2c3), r(a1b2c3), rf));
+  TEST("(?!a?b+)+c", rs(r(a1b2), r(b2), r(b2a1b2c3), rf));
+  TEST("(?!a?b*)+c", rs(r(a1b2a1b2c3c3), r(b2a1b2c3), r(b2a1b2c3), rf));
+  
+  auto const a1b2b2c3 = ts{ta1, tb2, tb2, tc3};
+
+  TEST("(?!ab)*c", rs(r(a1c3), r(b2), r(a1c3), rf));
+  TEST("(?!ab?)*c", rs(r(a1c3), r(b2a1c3), r(a1c3), rf));
+  TEST("(?!ab+)*c", rs(r(a1c3), r(b2), r(b2a1c3), rf));
+  TEST("(?!ab*)*c", rs(r(a1c3), r(b2a1c3), r(b2a1c3), rf));
+  TEST("(?!a?b)*c", rs(r(a1b2c3), r(b2), r(a1b2c3), rf));
+  TEST("(?!a+b)*c", rs(r(a1c3), r(a1b2), r(a1c3), rf));
+  TEST("(?!a*b)*c", rs(r(a1b2c3), r(a1b2), r(a1b2c3), rf));
+  TEST("(?!a?b?)*c", rs(r(a1b2a1b2c3c3), r(b2a1b2c3), r(a1b2c3), rf));
+  TEST("(?!a+b?)*c", rs(r(a1c3), r(a1b2a1c3), r(a1c3), rf));
+  TEST("(?!a*b?)*c", rs(r(a1b2a1b2c3c3), r(a1b2a1b2c3), r(a1b2c3), rf));
+  TEST("(?!a?b+)*c", rs(r(a1b2c3), r(b2), r(b2a1b2c3), rf));
+  TEST("(?!a?b*)*c", rs(r(a1b2a1b2c3c3), r(b2a1b2c3), r(b2a1b2c3), rf));
+
+  auto const te5 = t('e', 5);
+  auto const td4 = t('d', 4);
+  auto const a1b2c3c3c3c3e5e5e5e5 = ts{ta1, tb2, tc3, tc3, tc3, tc3, te5, te5, te5, te5};
+  auto const a1b2c3c3c3e5e5e5 = ts{ta1, tb2, tc3, tc3, tc3, te5, te5, te5};
+  auto const a1b2c3c3e5e5 = ts{ta1, tb2, tc3, tc3, te5, te5};
+  auto const a1b2c3d4c3d4e5e5 = ts{ta1, tb2, tc3, td4, tc3, td4, te5, te5};
+  auto const a1b2c3d4e5 = ts{ta1, tb2, tc3, td4, te5};
+  auto const a1c3c3e5e5 = ts{ta1, tc3, tc3, te5, te5};
+  auto const a1c3e5 = ts{ta1, tc3, te5};
+  auto const c3d4e5 = ts{tc3, td4, te5};
+  auto const c3d4e5e5 = ts{tc3, td4, te5, te5};
+  auto const c3d4e5e5e5 = ts{tc3, td4, te5, te5, te5};
+  auto const c3e5 = ts{tc3, te5};
+  auto const c3e5e5 = ts{tc3, te5, te5};
+  auto const d4 = ts{td4};
+  auto const e5 = ts{te5};
+
+  TEST("(?!ab)?(?!cd)?e", rs(r(a1c3e5), r(b2), r(c3e5), r(d4), r(e5), rf));
+  TEST("(?!a|b)?(?!c?|d)?e", rs(r(a1b2c3d4e5), r(c3d4e5), r(c3d4e5e5), r(e5), r(e5), rf));
+  TEST("(?!a?|b)?(?!cd)?e", rs(r(a1b2c3c3e5e5), r(c3e5), r(c3e5), r(d4), r(e5), rf));
+  TEST("(?!a?|b?)?(?!cd)?e", rs(r(a1b2c3c3c3e5e5e5), r(c3e5), r(c3e5), r(d4), r(e5), rf));;
+  TEST("(?!ab){,1}(?!cd){,1}e", rs(r(a1c3c3e5e5), r(b2), r(c3e5e5), r(d4), r(e5), rf));
+  TEST("(?!a|b){,1}(?!c?|d){,1}e", rs(r(a1b2c3d4c3d4e5e5), r(c3d4e5), r(c3d4e5e5e5), r(e5), r(e5), rf));
+  TEST("(?!a?|b){,1}(?!cd){,1}e", rs(r(a1b2c3c3c3e5e5e5), r(c3e5), r(c3e5e5), r(d4), r(e5), rf));
+  TEST("(?!a?|b?){,1}(?!cd){,1}e", rs(r(a1b2c3c3c3c3e5e5e5e5), r(c3e5), r(c3e5e5), r(d4), r(e5), rf));
 
   return main_result;
 }

@@ -4,13 +4,14 @@
 #include <stdexcept>
 #include <algorithm>
 
-#include <iostream>
+// #include <iostream>
 // #include "print_automaton.hpp"
 
 namespace {
 
 struct Stack {
   std::vector<unsigned> iends;
+  std::vector<unsigned> irngs;
   falcon::regex_dfa::Range::State states;
   unsigned icap;
   unsigned itrs;
@@ -93,7 +94,7 @@ private:
 falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
 {
   std::vector<Stack> stack;
-  stack.push_back({{}, Range::Normal, 0, 0});
+  stack.push_back({{}, {}, Range::Normal, 0, 0});
 
   CapStack cap_stack;
 
@@ -241,20 +242,12 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
 
     cp_irngs.assign(irngs.begin() + ncp_irng, irngs.end());
 
-    auto iadd = static_cast<unsigned>(rngs.size()-1u);
-    if (irngs.back() == iadd) {
-      irngs.pop_back();
-    }
-
     while (n--) {
-      irngs.push_back(iadd);
-      set_union(irngs, cp_irngs, tmp_irng, std::greater<>{});
+      // TODO irngs => irngs[ncp_irng..end]
+      set_union(cp_irngs, irngs, tmp_irng, std::greater<>{});
       update_rngs();
     }
-    irngs.push_back(iadd);
-    if (ncp_irng) {
-      irngs.push_back(ipipe);
-    }
+    set_union(irngs, cp_irngs, tmp_irng, std::greater<>{});
   };
 
 
@@ -276,61 +269,25 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     cap_stack.alternation();
   };
 
-  auto scan_open = [&]{
-    if (cap_stack.is_full(cap_level())) {
-      throw std::runtime_error("capture overflow");
-    }
-    if ('?' == (c = consumer.bumpc())) {
-      switch (c = consumer.bumpc()) {
-        case '!':
-          c = consumer.bumpc();
-          break;
-        case ':':
-          throw std::runtime_error("not implemented: (?:");
-          break;
-        case '=':
-          throw std::runtime_error("not implemented: (?=");
-          break;
-        default:
-          throw std::runtime_error("unrecognized (?x");
-          break;
-      }
-    }
-    else {
-      cap_stack.mark(cap_level());
-    }
-    stack.push_back({
-      {iends},
-      states,
-      count_rngs()-1,
-      unsigned(rngs[ipipe].transitions.size())
-    });
-    ipipe = count_rngs()-1;
-    iends.clear();
-  };
-
   auto scan_multi_one_or_more = [&]{
-    irngs.insert(irngs.end(), iends.begin(), iends.end());
     ts = rngs[stack.back().icap].transitions;
     set_transitions();
     c = consumer.bumpc();
   };
 
   auto scan_multi_optional = [&]{
-    irngs.insert(irngs.end(), iends.begin(), iends.end());
-    irngs.push_back(stack.back().icap);
     c = consumer.bumpc();
   };
 
   auto scan_multi_zero_or_more = [&]{
-    rngs.back() = rngs[stack.back().icap];
-    scan_multi_optional();
+    ts = rngs[stack.back().icap].transitions;
+    set_transitions();
+    c = consumer.bumpc();
   };
 
   auto scan_multi_interval = [&]{
     auto start = consumer.str();
     char * end = 0;
-    irngs.insert(irngs.end(), iends.begin(), iends.end());
 
     auto exec_state = [&](unsigned long m, auto estate, auto check) {
       unsigned long n = 0;
@@ -376,11 +333,14 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
         check
       );
     };
+    
+    bool merge_irng = false;
 
     // {,n}
     if (*start == ',') {
       ++start;
       repeat_conditional([](auto n) {return n;});
+      merge_irng = true;
     }
     // {m...}
     else {
@@ -420,22 +380,91 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     }
     consumer.str(end + 1);
     c = consumer.bumpc();
+    return merge_irng;
+  };
+
+  auto scan_open = [&]{
+    if (cap_stack.is_full(cap_level())) {
+      throw std::runtime_error("capture overflow");
+    }
+    if ('?' == (c = consumer.bumpc())) {
+      switch (c = consumer.bumpc()) {
+        case '!':
+          c = consumer.bumpc();
+          break;
+        case ':':
+          throw std::runtime_error("not implemented: (?:");
+          break;
+        case '=':
+          throw std::runtime_error("not implemented: (?=");
+          break;
+        default:
+          throw std::runtime_error("unrecognized (?x");
+          break;
+      }
+    }
+    else {
+      cap_stack.mark(cap_level());
+    }
+    ipipe = count_rngs()-1;
+    stack.push_back({
+      {iends},
+      std::move(irngs),
+      states,
+      ipipe,
+      unsigned(rngs[ipipe].transitions.size())
+    });
+    iends.clear();
+    irngs.clear();
+    irngs.push_back(ipipe);
   };
 
   auto scan_close = [&]{
     if (!cap_level()) {
       throw std::runtime_error("unmatched )");
     }
+    
+    auto copy_first = [&rngs, &stack]{
+      auto & irngs_prev = stack.back().irngs;
+      auto & src_rng = rngs[stack.back().icap].transitions;
+      for (auto & i : irngs_prev) {
+        if (&rngs[i].transitions != &src_rng) {
+          rngs[i].transitions.insert(rngs[i].transitions.end(), src_rng.begin(), src_rng.end());
+        }
+      }
+    };
+    
+    auto merge_group = [&irngs, &stack]{
+      auto & irngs_prev = stack.back().irngs;
+      irngs_prev.insert(irngs_prev.end(), irngs.begin(), irngs.end());
+      irngs = std::move(irngs_prev);
+    };
+    
+    auto merge_group_if = [&irngs, &stack, &merge_group]{
+      // ngs[stack.back().icap] and iend
+      if (irngs.end() != std::find(irngs.begin(), irngs.end(), stack.back().icap)) {
+        merge_group();
+      }
+    };
 
     c = consumer.bumpc();
+    irngs.insert(irngs.end(), iends.begin(), iends.end());
     switch (c) {
-      case '+': scan_multi_one_or_more(); break;
-      case '*': scan_multi_zero_or_more(); break;
-      case '?': scan_multi_optional(); break;
-      case '{': scan_multi_interval(); break;
-      default:
-        irngs.insert(irngs.end(), iends.begin(), iends.end());
-      ;
+      case '+': scan_multi_one_or_more(); copy_first(); merge_group_if(); break;
+      case '*': scan_multi_zero_or_more(); copy_first(); merge_group(); break;
+      case '?': scan_multi_optional(); copy_first(); merge_group(); break;
+      case '{': {
+        bool m = scan_multi_interval(); 
+        copy_first(); 
+        if (m) {
+          merge_group(); 
+        }
+        else {
+          merge_group_if(); 
+        }
+      }
+      break;
+      default: copy_first(); merge_group_if();
     }
 
     ipipe = stack[stack.size()-2].icap;
