@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <algorithm>
 
+#include <cassert>
 // #include <iostream>
 // #include "print_automaton.hpp"
 
@@ -13,8 +14,8 @@ struct Stack {
   std::vector<unsigned> iends;
   std::vector<unsigned> irngs;
   falcon::regex_dfa::Range::State states;
-  unsigned icap;
-  unsigned itrs;
+  unsigned ipipe;
+  unsigned count_pipe;
 };
 
 class CapStack
@@ -95,6 +96,13 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
 {
   std::vector<Stack> stack;
   stack.push_back({{}, {}, Range::Normal, 0, 0});
+  
+  struct Pipe {
+    unsigned old_next;
+    unsigned size;
+    bool ts_is_empty;
+  };
+  std::vector<Pipe> pipe_stack;
 
   CapStack cap_stack;
 
@@ -147,10 +155,6 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     auto const sz = rngs.size();
     new_rng.assign(&rngs[ipipe/*s.back()*/], &rngs[sz]);
     auto count_rng_added = unsigned(new_rng.size() - 1u);
-    {
-      auto & ts = rngs[ipipe/*s.back()*/].transitions;
-      ts.erase(ts.begin(), ts.begin() + stack.back().itrs);
-    }
 
     auto const ncp_irng = static_cast<unsigned>(std::partition(
       irngs.begin()
@@ -259,8 +263,18 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     scan_intervals(consumer, ts, count_rngs());
     c = consumer.bumpc();
   };
-
+  
   auto scan_or = [&]{
+    ipipe = count_rngs()-1;
+    bool const is_empty = rngs[ipipe].transitions.empty();
+    if (!is_empty) {
+      Range & rng_base = rngs[stack.back().ipipe];
+      states = rng_base.states;
+      // TODO cap_stack
+      rngs.push_back({{}, {}, {}});
+      ipipe = count_rngs()-1;
+    }
+    pipe_stack.push_back({ipipe, unsigned(irngs.size()), is_empty});
     iends.insert(iends.end(), irngs.begin(), irngs.end());
     irngs.clear();
     irngs.push_back(ipipe);
@@ -270,7 +284,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
   };
 
   auto scan_multi_one_or_more = [&]{
-    ts = rngs[stack.back().icap].transitions;
+    ts = rngs[stack.back().ipipe].transitions;
     set_transitions();
     c = consumer.bumpc();
   };
@@ -280,7 +294,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
   };
 
   auto scan_multi_zero_or_more = [&]{
-    ts = rngs[stack.back().icap].transitions;
+    ts = rngs[stack.back().ipipe].transitions;
     set_transitions();
     c = consumer.bumpc();
   };
@@ -408,11 +422,11 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     }
     ipipe = count_rngs()-1;
     stack.push_back({
-      {iends},
+      std::move(iends),
       std::move(irngs),
       states,
       ipipe,
-      unsigned(rngs[ipipe].transitions.size())
+      unsigned(pipe_stack.size())
     });
     iends.clear();
     irngs.clear();
@@ -426,7 +440,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     
     auto copy_first = [&rngs, &stack]{
       auto & irngs_prev = stack.back().irngs;
-      auto & src_rng = rngs[stack.back().icap].transitions;
+      auto & src_rng = rngs[stack.back().ipipe].transitions;
       for (auto & i : irngs_prev) {
         if (&rngs[i].transitions != &src_rng) {
           rngs[i].transitions.insert(rngs[i].transitions.end(), src_rng.begin(), src_rng.end());
@@ -441,14 +455,55 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     };
     
     auto merge_group_if = [&irngs, &stack, &merge_group]{
-      // ngs[stack.back().icap] and iend
-      if (irngs.end() != std::find(irngs.begin(), irngs.end(), stack.back().icap)) {
+      // TODO ngs[stack.back().ipipe] and iend
+      if (irngs.end() != std::find(irngs.begin(), irngs.end(), stack.back().ipipe)) {
         merge_group();
       }
     };
 
     c = consumer.bumpc();
+    
+    ipipe = stack.back().ipipe;
+    {
+      auto new_i = count_rngs()-1;
+      unsigned count_pipe = unsigned(pipe_stack.size() - stack.back().count_pipe);
+      assert(count_pipe <= pipe_stack.size());
+      auto first = pipe_stack.end() - count_pipe;
+      auto last = pipe_stack.end();
+      auto p = iends.begin();
+      auto cur_ipipe = ipipe;
+      for (; first != last; ++first) {
+        auto old = first->old_next;
+
+        assert(first->size <= iends.size() - (iends.begin() - p));
+        auto e = p + first->size;
+        for (; p != e; ++p) {
+          if (*p == old) {
+            *p = new_i;
+          }
+        }
+        
+        auto i = cur_ipipe;
+        auto ie = i + first->size;
+        assert(ie <= rngs.size());
+        for (; i != ie; ++i) {
+          for (Transition & t : rngs[i].transitions) {
+            if (t.next == old) {
+              t.next = new_i;
+            }
+          }
+        }
+        cur_ipipe = old;
+        
+        Transitions & ts_dest = rngs[ipipe].transitions;
+        Transitions & ts_src = rngs[old].transitions;
+        ts_dest.insert(ts_dest.end(), ts_src.begin(), ts_src.end());
+      }
+      pipe_stack.resize(pipe_stack.size() - count_pipe);
+    }
+    
     irngs.insert(irngs.end(), iends.begin(), iends.end());
+    
     switch (c) {
       case '+': scan_multi_one_or_more(); copy_first(); merge_group_if(); break;
       case '*': scan_multi_zero_or_more(); copy_first(); merge_group(); break;
@@ -464,10 +519,10 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
         }
       }
       break;
-      default: copy_first(); merge_group_if();
+      default: /*copy_first(); merge_group_if()*/;
     }
 
-    ipipe = stack[stack.size()-2].icap;
+    ipipe = stack[stack.size()-2].ipipe;
     iends = stack.back().iends;
     stack.pop_back();
 

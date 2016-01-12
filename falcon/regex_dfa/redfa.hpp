@@ -147,6 +147,11 @@ struct Ranges : std::vector<Range>
   std::vector<unsigned> capture_table;
 };
 
+template<class T>
+bool operator != (T const & a, T const & b) {
+  return !(a == b);
+}
+
 } }
 
 #endif // REDFA_HPP

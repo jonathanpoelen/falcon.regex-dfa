@@ -2,11 +2,12 @@
 #include "falcon/regex_dfa/print_automaton.hpp"
 
 #include <iostream>
+#include <algorithm>
 // #include <cassert>
 
 unsigned g_count = 0;
 
-int main_result = 0;
+int test_failed = 0;
 
 namespace re = falcon::regex_dfa;
 
@@ -16,7 +17,24 @@ void test(
 , re::Ranges const & rngs2
 , unsigned line
 ) {
-  if (rngs1 != rngs2) {
+  if (![&]{
+    if (rngs1.size() != rngs2.size()) {
+      std::cerr << "# different size\n";
+      return false;
+    }
+    auto p1 = rngs1.begin();
+    auto neq = [&p1](re::Range const & r) {
+      bool const ret = p1->states ? *p1 != r : bool(r.states);
+      ++p1;
+      return ret;
+    };
+    auto p2 = std::find_if(rngs2.begin(), rngs2.end(), neq);
+    if (p2 != rngs2.end()) {
+      std::cerr << "# different range (i: " << (p2-rngs2.begin()) << ")\n";
+      return false;
+    }
+    return true;
+  }()) {
     std::cerr
       << ++g_count << "  line: " << line
       << "\npattern: \033[37;02m" << pattern
@@ -30,7 +48,7 @@ void test(
       << "\033[0m\n"
     ;
     std::cerr << "----------\n";
-    main_result = 1;
+    ++test_failed;
     //assert(false);
     //throw 1;
   }
@@ -91,6 +109,7 @@ int main()
   using ts = Transitions;
   Event const full {0, ~re::char_int{}};
   Range rf{Range::Final, {}, {}};
+  Range none{{}, {}, {}};
 
   auto const F = Range::Final;
   auto const B = Range::Begin;
@@ -279,11 +298,11 @@ int main()
   TEST("(?!a?b)c", rs(r(a1b2), r(b2), r(c3), rf));
   TEST("(?!a+b)c", rs(r(a1), r(a1b2), r(c3), rf));
   TEST("(?!a*b)c", rs(r(a1b2), r(a1b2), r(c3), rf));
-  TEST("(?!a?b?)c", rs(r(a1b2c3c3), r(b2c3), r(c3), rf));
+  TEST("(?!a?b?)c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
   TEST("(?!a+b?)c", rs(r(a1), r(a1b2c3), r(c3), rf));
-  TEST("(?!a*b?)c", rs(r(a1b2c3c3), r(a1b2c3), r(c3), rf));
+  TEST("(?!a*b?)c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
   TEST("(?!a?b+)c", rs(r(a1b2), r(b2), r(b2c3), rf));
-  TEST("(?!a?b*)c", rs(r(a1b2c3c3), r(b2c3), r(b2c3), rf));
+  TEST("(?!a?b*)c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
 
   TEST("(?!ab){1}c", rs(r(a1), r(b2), r(c3), rf));
   TEST("(?!ab?){1}c", rs(r(a1), r(b2c3), r(c3), rf));
@@ -308,7 +327,6 @@ int main()
   auto const a1b2a3b4c5 = ts{ta1, tb2, ta3, tb4, tc5};
   auto const a1b2a3 = ts{ta1, tb2, ta3};
   auto const a1b2a3b4c5c5 = ts{ta1, tb2, ta3, tb4, tc5, tc5};
-  auto const a1b2c3c3c3 = ts{ta1, tb2, tc3, tc3, tc3};
 
   TEST("(?!ab){2}c", rs(r(a1), r(b2), r(a3), r(b4), r(c5), rf));
   TEST("(?!ab?){2}c", rs(r(a1), r(b2a3), r(a3), r(b4c5), r(c5), rf));
@@ -340,7 +358,7 @@ int main()
   auto const a3b4a5 = ts{ta3, tb4, ta5};
   auto const b4a5b6 = ts{tb4, ta5, tb6};
   auto const a1b2a3b4a5b6c7c7 = ts{ta1, tb2, ta3, tb4, ta5, tb6, tc7, tc7};
-
+  
   TEST("(?!ab){3}c", rs(r(a1), r(b2), r(a3), r(b4), r(a5), r(b6), r(c7), rf));
   TEST("(?!ab?){3}c", rs(r(a1), r(b2a3), r(a3), r(b4a5), r(a5), r(b6c7), r(c7), rf));
   TEST("(?!ab+){3}c", rs(r(a1), r(b2), r(b2a3), r(b4), r(b4a5), r(b6), r(b6c7), rf));
@@ -354,9 +372,9 @@ int main()
   TEST("(?!a?b+){3}c", rs(r(a1b2), r(b2), r(b2a3b4), r(b4), r(b4a5b6), r(b6), r(b6c7), rf));
   TEST("(?!a?b*){3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2a3b4a5b6c7), r(b2a3b4a5b6c7), r(b4a5b6c7), r(b4a5b6c7), r(b6c7), r(b6c7), rf));
 
-  auto const a1c3 = ts{ta1, tc3};
   auto const a1c3c3 = ts{ta1, tc3, tc3};
-  
+  auto const a1b2c3c3c3 = ts{ta1, tb2, tc3, tc3, tc3};
+
   TEST("(?!ab){,1}c", rs(r(a1c3c3), r(b2), r(c3), rf));
   TEST("(?!ab?){,1}c", rs(r(a1c3c3), r(b2c3), r(c3), rf));
   TEST("(?!ab+){,1}c", rs(r(a1c3c3), r(b2), r(b2c3), rf));
@@ -370,13 +388,10 @@ int main()
   TEST("(?!a?b+){,1}c", rs(r(a1b2c3c3), r(b2), r(b2c3), rf));
   TEST("(?!a?b*){,1}c", rs(r(a1b2c3c3c3), r(b2c3), r(b2c3), rf));
 
-  auto const a1a3c5 = ts{ta1, ta3, tc5};
   auto const a1a3c5c5 = ts{ta1, ta3, tc5, tc5};
   auto const b2a3c5 = ts{tb2, ta3, tc5};
-  auto const b2c5 = ts{tb2, tc5};
   auto const a3c5 = ts{ta3, tc5};
   auto const b4c5c5 = ts{tb4, tc5, tc5};
-  auto const a1b2a3b4a3b4c5 = ts{ta1, tb2, ta3, tb4, ta3, tb4, tc5};
   auto const b2a3b4a3b4c5c5 = ts{tb2, ta3, tb4, ta3, tb4, tc5, tc5};
   auto const a3b4a3b4c5c5c5 = ts{ta3, tb4, ta3, tb4, tc5, tc5, tc5};
   auto const a1b2a3b4a3b4c5c5 = ts{ta1, tb2, ta3, tb4, ta3, tb4, tc5, tc5};
@@ -396,10 +411,8 @@ int main()
   TEST("(?!a?b+){,2}c", rs(r(a1b2a3b4c5c5), r(b2), r(b2a3b4c5), r(b4), r(b4c5), rf));
   TEST("(?!a?b*){,2}c", rs(r(a1b2a3b4a3b4c5c5), r(b2a3b4a3b4c5c5), r(b2a3b4a3b4c5c5c5), r(b4c5), r(b4c5c5), rf));
 
-  auto const a1a3a5c7 = ts{ta1, ta3, ta5, tc7};
   auto const a1b2a3a5 = ts{ta1, tb2, ta3, ta5};
   auto const a1b2a3b4a3b4a5b6a5b6c7c7 = ts{ta1, tb2, ta3, tb4, ta3, tb4, ta5, tb6, ta5, tb6, tc7, tc7};
-  auto const a1b2a3b4a3b4a5b6c7 = ts{ta1, tb2, ta3, tb4, ta3, tb4, ta5, tb6, tc7};
   auto const a3a5a5c7 = ts{ta3, ta5, ta5, tc7};
   auto const a3a5c7 = ts{ta3, ta5, tc7};
   auto const a3b4a3b4a5b6a5b6a5b6c7c7 = ts{ta3, tb4, ta3, tb4, ta5, tb6, ta5, tb6, ta5, tb6, tc7, tc7};
@@ -432,7 +445,8 @@ int main()
   TEST("(?!a*b?){,3}c", rs(r(a1b2a3b4a3b4a5b6c7c7), r(a1b2a3b4a3b4a5b6a5b6c7c7), r(a3b4a3b4a5b6a5b6a5b6c7c7), r(a3b4a5b6c7), r(a5b6a5b6c7c7c7), r(a5b6c7), r(c7c7), rf));
   TEST("(?!a?b+){,3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2), r(b2a3b4a5b6c7), r(b4), r(b4a5b6c7), r(b6), r(b6c7), rf));
   TEST("(?!a?b*){,3}c", rs(r(a1b2a3b4a3b4a5b6c7c7), r(b2a3b4a3b4a5b6a5b6c7c7), r(b2a3b4a3b4a5b6a5b6a5b6c7c7), r(b4a5b6c7), r(b4a5b6a5b6c7c7c7), r(b6c7), r(b6c7c7), rf));
-
+  
+  auto const a1c3 = ts{ta1, tc3};
   auto const b2a1c3 = ts{tb2, ta1, tc3};
   auto const a1b2a1b2c3 = ts{ta1, tb2, ta1, tb2, tc3};
   auto const a1b2a1b2c3c3 = ts{ta1, tb2, ta1, tb2, tc3, tc3};
@@ -457,6 +471,7 @@ int main()
   auto const a3b4a3b4c5 = ts{ta3, tb4, ta3, tb4, tc5};
   auto const a3b4a3c5 = ts{ta3, tb4, ta3, tc5};
   auto const b4a3b4c5 = ts{tb4, ta3, tb4, tc5};
+  auto const a1b2a3b4a3b4c5 = ts{ta1, tb2, ta3, tb4, ta3, tb4, tc5};
 
   TEST("(?!ab){2,}c", rs(r(a1), r(b2), r(a3), r(b4), r(a3c5), rf));
   TEST("(?!ab?){2,}c", rs(r(a1), r(b2a3), r(a3), r(b4a3c5), r(a3c5), rf));
@@ -574,8 +589,6 @@ int main()
   TEST("(?!a?b+){2,3}c", rs(r(a1b2), r(b2), r(b2a3b4), r(b4), r(b4a5b6c7), r(b6), r(b6c7), rf));
   TEST("(?!a?b*){2,3}c", rs(r(a1b2a3b4a5b6c7c7), r(b2a3b4a5b6c7c7), r(b2a3b4a5b6c7c7), r(b4a5b6c7c7), r(b4a5b6c7c7), r(b6c7), r(b6c7), rf));
 
-  auto const b6a5 = ts{tb6, ta5};
-
   TEST("(?!ab){3,3}c", rs(r(a1), r(b2), r(a3), r(b4), r(a5), r(b6), r(c7), rf));
   TEST("(?!ab?){3,3}c", rs(r(a1), r(b2a3), r(a3), r(b4a5), r(a5), r(b6c7), r(c7), rf));
   TEST("(?!ab+){3,3}c", rs(r(a1), r(b2), r(b2a3), r(b4), r(b4a5), r(b6), r(b6c7), rf));
@@ -602,8 +615,6 @@ int main()
   TEST("(?!a?b+)?c", rs(r(a1b2c3), r(b2), r(b2c3), rf));
   TEST("(?!a?b*)?c", rs(r(a1b2c3c3), r(b2c3), r(b2c3), rf));
 
-  auto const b2a1b2c3c3 = ts{tb2, ta1, tb2, tc3, tc3};
-
   TEST("(?!ab)+c", rs(r(a1), r(b2), r(a1c3), rf));
   TEST("(?!ab?)+c", rs(r(a1), r(b2a1c3), r(a1c3), rf));
   TEST("(?!ab+)+c", rs(r(a1), r(b2), r(b2a1c3), rf));
@@ -616,8 +627,6 @@ int main()
   TEST("(?!a*b?)+c", rs(r(a1b2a1b2c3c3), r(a1b2a1b2c3), r(a1b2c3), rf));
   TEST("(?!a?b+)+c", rs(r(a1b2), r(b2), r(b2a1b2c3), rf));
   TEST("(?!a?b*)+c", rs(r(a1b2a1b2c3c3), r(b2a1b2c3), r(b2a1b2c3), rf));
-  
-  auto const a1b2b2c3 = ts{ta1, tb2, tb2, tc3};
 
   TEST("(?!ab)*c", rs(r(a1c3), r(b2), r(a1c3), rf));
   TEST("(?!ab?)*c", rs(r(a1c3), r(b2a1c3), r(a1c3), rf));
@@ -632,31 +641,54 @@ int main()
   TEST("(?!a?b+)*c", rs(r(a1b2c3), r(b2), r(b2a1b2c3), rf));
   TEST("(?!a?b*)*c", rs(r(a1b2a1b2c3c3), r(b2a1b2c3), r(b2a1b2c3), rf));
 
+  auto const tc4 = t('c', 4);
   auto const te5 = t('e', 5);
   auto const td4 = t('d', 4);
-  auto const a1b2c3c3c3c3e5e5e5e5 = ts{ta1, tb2, tc3, tc3, tc3, tc3, te5, te5, te5, te5};
-  auto const a1b2c3c3c3e5e5e5 = ts{ta1, tb2, tc3, tc3, tc3, te5, te5, te5};
-  auto const a1b2c3c3e5e5 = ts{ta1, tb2, tc3, tc3, te5, te5};
-  auto const a1b2c3d4c3d4e5e5 = ts{ta1, tb2, tc3, td4, tc3, td4, te5, te5};
-  auto const a1b2c3d4e5 = ts{ta1, tb2, tc3, td4, te5};
   auto const a1c3c3e5e5 = ts{ta1, tc3, tc3, te5, te5};
   auto const a1c3e5 = ts{ta1, tc3, te5};
-  auto const c3d4e5 = ts{tc3, td4, te5};
-  auto const c3d4e5e5 = ts{tc3, td4, te5, te5};
-  auto const c3d4e5e5e5 = ts{tc3, td4, te5, te5, te5};
+  auto const a2b2c3c3c3e5e5e5 = ts{ta2, tb2, tc3, tc3, tc3, te5, te5, te5};
+  auto const a2b2c3c3e5e5 = ts{ta2, tb2, tc3, tc3, te5, te5};
+  auto const a2b2c4d4c4d4e5e5 = ts{ta2, tb2, tc4, td4, tc4, td4, te5, te5};
+  auto const a2b2c4d4e5 = ts{ta2, tb2, tc4, td4, te5};
+  auto const b2c3e5 = ts{tb2, tc3, te5};
   auto const c3e5 = ts{tc3, te5};
   auto const c3e5e5 = ts{tc3, te5, te5};
+  auto const c3e5e5e5 = ts{tc3, te5, te5, te5};
+  auto const c4d4e5e5e5 = ts{tc4, td4, te5, te5, te5};
+  auto const c4d4e5e5e5e5 = ts{tc4, td4, te5, te5, te5, te5};
   auto const d4 = ts{td4};
+  auto const e5e5 = ts{te5, te5};
   auto const e5 = ts{te5};
 
   TEST("(?!ab)?(?!cd)?e", rs(r(a1c3e5), r(b2), r(c3e5), r(d4), r(e5), rf));
-  TEST("(?!a|b)?(?!c?|d)?e", rs(r(a1b2c3d4e5), r(c3d4e5), r(c3d4e5e5), r(e5), r(e5), rf));
-  TEST("(?!a?|b)?(?!cd)?e", rs(r(a1b2c3c3e5e5), r(c3e5), r(c3e5), r(d4), r(e5), rf));
-  TEST("(?!a?|b?)?(?!cd)?e", rs(r(a1b2c3c3c3e5e5e5), r(c3e5), r(c3e5), r(d4), r(e5), rf));;
+  TEST("(?!a|b)?(?!c?|d)?e", rs(r(a2b2c4d4e5), r(b2), r(c4d4e5e5e5), r(d4), r(e5e5), rf));
+  TEST("(?!a?|b)?(?!cd)?e", rs(r(a2b2c3c3e5e5), r(b2), r(c3e5e5), r(d4), r(e5), rf));
+  TEST("(?!a?|b?)?(?!cd)?e", rs(r(a2b2c3c3e5e5), r(b2c3e5), r(c3e5e5), r(d4), r(e5), rf));;
   TEST("(?!ab){,1}(?!cd){,1}e", rs(r(a1c3c3e5e5), r(b2), r(c3e5e5), r(d4), r(e5), rf));
-  TEST("(?!a|b){,1}(?!c?|d){,1}e", rs(r(a1b2c3d4c3d4e5e5), r(c3d4e5), r(c3d4e5e5e5), r(e5), r(e5), rf));
-  TEST("(?!a?|b){,1}(?!cd){,1}e", rs(r(a1b2c3c3c3e5e5e5), r(c3e5), r(c3e5e5), r(d4), r(e5), rf));
-  TEST("(?!a?|b?){,1}(?!cd){,1}e", rs(r(a1b2c3c3c3c3e5e5e5e5), r(c3e5), r(c3e5e5), r(d4), r(e5), rf));
+  TEST("(?!a|b){,1}(?!c?|d){,1}e", rs(r(a2b2c4d4c4d4e5e5), r(b2), r(c4d4e5e5e5e5), r(d4), r(e5e5), rf));
+  TEST("(?!a?|b){,1}(?!cd){,1}e", rs(r(a2b2c3c3c3e5e5e5), r(b2), r(c3e5e5e5), r(d4), r(e5), rf));
+  TEST("(?!a?|b?){,1}(?!cd){,1}e", rs(r(a2b2c3c3c3e5e5e5), r(b2c3e5), r(c3e5e5e5), r(d4), r(e5), rf));
 
-  return main_result;
+  auto const td5 = t('d', 5);
+  auto const td6 = t('d', 6);
+  auto const a1b4c4 = ts{ta1, tb4, tc4};
+  auto const a1b3c5 = ts{ta1, tb3, tc5};
+  auto const a3b3c3 = ts{ta3, tb3, tc3};
+  auto const d4d4d4 = ts{td4, td4, td4};
+  auto const b3d6 = ts{tb3, td6};
+  auto const d5d5 = ts{td5, td5};
+  auto const a1d6 = ts{ta1, td6};
+  auto const a1d5 = ts{ta1, td5};
+  auto const b3c3 = ts{tb3, tc3};
+  auto const c4 = ts{tc4};
+  auto const d6 = ts{td6};
+
+  TEST("(?!a+|(?!b+|c))d", rs(r(a1b3c5), r(a1d6), none, r(b3d6), none, r(d6), rf));
+  TEST("(?!a+|(?!b|c))d", rs(r(a1b4c4), r(a1d5), none, r(c4), r(d5d5), rf));
+  TEST("(?!a|(?!b|c))d", rs(r(a3b3c3), r(b3c3), r(c3), r(d4d4d4), rf));
+
+  if (test_failed) {
+    std::cerr << "error(s): " << test_failed << "\n";
+  }
+  return test_failed ? 1 : 0;
 }
