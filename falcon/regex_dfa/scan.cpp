@@ -5,9 +5,11 @@
 #include <algorithm>
 
 #include <cassert>
-// #include <iostream>
+#include <iostream>
 // #include "print_automaton.hpp"
 
+namespace falcon { 
+namespace regex_dfa {
 namespace {
 
 struct Stack {
@@ -90,67 +92,150 @@ private:
     return std::size_t{1} << level;
   }
 };
-}
 
-falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
+struct Pipe {
+  unsigned old_next;
+  unsigned size;
+  bool ts_is_empty;
+};
+
+template<class It>
+struct range_iterator
+{
+  It first, last;
+  It begin() const { return first; }
+  It end() const { return last; }
+  std::size_t size() const { return last - first; }
+};
+
+using std::swap;
+
+struct basic_scanner
 {
   std::vector<Stack> stack;
-  stack.push_back({{}, {}, Range::Normal, 0, 0});
-  
-  struct Pipe {
-    unsigned old_next;
-    unsigned size;
-    bool ts_is_empty;
-  };
   std::vector<Pipe> pipe_stack;
-
   CapStack cap_stack;
-
-  auto cap_level = [&]() { return stack.size() - 1; };
-
+ 
   Ranges rngs;
   std::vector<unsigned> irngs;
   std::vector<unsigned> iends;
-  unsigned ipipe = 0;
-  irngs.push_back(0);
+  unsigned ipipe;
 
-  Range::State states = Range::Normal;
-  auto new_range = [&](auto remove_open_cap) -> Range & {
+  Range::State states;
+  
+  Transitions ts;
+
+  /// @{
+  /// garbage 
+  Captures tmp_capstates;
+  std::vector<Range> new_rng;
+  /// @}
+  
+  utf8_consumer consumer {nullptr};
+  char_int c;
+  
+  void prepare() {
+    stack.push_back({{}, {}, Range::Normal, 0, 0});
+    rngs.push_back({Range::Normal, {}, {}});
+    irngs.push_back(0);
+    ipipe = 0;
+    states = Range::Normal;
+  }
+  
+  void scan(const char * s)
+  {
+    consumer = utf8_consumer{s};
+    c = consumer.bumpc();
+
+    check_no_repetition();
+    while (c) {
+      enum { Transition, Character };
+
+      if ([&]{
+        switch (c) {
+          case '[': scan_bracket(); return Character;
+          case '|': scan_or(); return Transition;
+          case '(': scan_open(); return Transition;
+          case ')': scan_close(); return Transition;
+          case '^': scan_begin(); return Transition;
+          case '$': scan_end(); return Transition;
+          default: scan_normal(); return Character;
+        }
+      }()) {
+         switch (c) {
+           case '+': scan_single_one_or_more(); break;
+           case '*': scan_single_zero_or_more(); break;
+           case '?': scan_single_optional(); break;
+           case '{': scan_single_interval(); break;
+           default: add_single_range();
+        }
+      }
+      else {
+        check_no_repetition();
+      }
+    }
+  }
+  
+  Ranges final() 
+  {
+    auto re_states = [this](auto & iarr){
+      for (auto i : iarr) {
+        if (!(rngs[i].states & Range::End)) {
+          rngs[i].states |= Range::Final | states;
+          rngs[i].states &= ~Range::Normal;
+        }
+      }
+    };
+
+    re_states(iends);
+    re_states(irngs);
+
+    rngs.capture_table = std::move(cap_stack.capture_table);
+    return std::move(rngs);
+  }
+  
+  void check_no_repetition() {
+    switch (c) {
+      case '?': case '+': case '*': case '{':
+      throw std::runtime_error("syntaxe error ? + * {");
+    }
+  }
+  
+  std::size_t cap_level() {
+    return stack.size() - 1u; 
+  }
+
+  template<class Bool>
+  Range & new_range(Bool remove_open_cap) {
     rngs.push_back({states, cap_stack.captures(), {}});
     if (remove_open_cap) {
       cap_stack.remove_open();
     }
     states = Range::Normal;
     return rngs.back();
-  };
-  new_range(std::false_type{});
+  }
 
-  Transitions ts;
-
-  auto set_transitions = [&]{
-    for (auto & i : irngs) {
-      rngs[i].transitions.insert(rngs[i].transitions.end(), ts.begin(), ts.end());
+  void set_transitions() {
+    for (auto && i : irngs) {
+      auto & rng_ts = rngs[i].transitions;
+      rng_ts.insert(rng_ts.end(), ts.begin(), ts.end());
     }
-  };
+  }
 
-  auto count_rngs = [&]() { return static_cast<unsigned>(rngs.size()); };
+  unsigned count_rngs() {
+    return static_cast<unsigned>(rngs.size()); 
+  }
 
-  auto renext_transitions = [&]{
+  void renext_transitions() {
     for (auto && t : ts) {
       t.next = count_rngs();
     }
-  };
+  }
 
   enum class MultiDup { Repeat, Conditional, RepeatAndConditional, RepeatAndMore };
 
-#ifdef IN_IDE_PARSER
-  Captures tmp_capstates;
-  std::vector<Range> new_rng;
-  auto repeat_multi_dup = [&]
-#else
-  auto repeat_multi_dup = [&, tmp_capstates = Captures(), new_rng = std::vector<Range>()]
-#endif
-  (unsigned long m, unsigned long n, auto estate) mutable
+  template<class EState>
+  void repeat_multi_dup(unsigned long m, unsigned long n, EState estate)
   {
     auto const sz = rngs.size();
     new_rng.assign(&rngs[ipipe/*s.back()*/], &rngs[sz]);
@@ -164,22 +249,26 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     }) - irngs.begin());
 
     decltype(irngs) cp_irngs;
+    // TODO unique_ptr{b, p, e}
     decltype(cp_irngs) tmp_irng;
     if (estate == MultiDup::Conditional) {
       cp_irngs.assign(irngs.begin() + ncp_irng, irngs.end());
     }
 
-    auto set_union = [](auto & c, auto const & c2, auto & tmp, auto cmp) {
-      tmp.resize(c.size() + c2.size());
+    auto union_save = [](auto & c, auto const & c2, auto & tmp, auto tmp_begin, auto cmp) {
       tmp.erase(
         std::set_union(
           c.begin(), c.end(),
           c2.begin(), c2.end(),
-          tmp.begin(), cmp
+          tmp_begin, cmp
         ),
         tmp.end()
       );
-      using std::swap;
+    };
+
+    auto set_union = [&union_save](auto & c, auto const & c2, auto & tmp, auto cmp) {
+      tmp.resize(c.size() + c2.size());
+      union_save(c, c2, tmp, tmp.begin(), cmp);
       swap(c, tmp);
     };
 
@@ -195,11 +284,13 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     std::for_each(irngs.begin(), irngs.begin() + ncp_irng, [&](unsigned i) {
       Transitions const & ts = rngs[i].transitions;
       for (auto & t : ts) {
+        // TODO lower_bounds
         if (std::find(irngs.begin(), irngs.end(), t.next) != irngs.end()) {
           extended_irng.push_back(static_cast<unsigned>(t.next));
         }
       }
     });
+    std::reverse(extended_irng.begin(), extended_irng.end());
     
     auto insert_transitions = [&](Transitions & transitions_added){
       for (auto & i : irngs) {
@@ -244,27 +335,31 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
       return ;
     }
 
+    std::reverse(irngs.begin() + ncp_irng, irngs.end());
     cp_irngs.assign(irngs.begin() + ncp_irng, irngs.end());
+    
+    using range_t = range_iterator<decltype(irngs.begin())>;
 
     while (n--) {
-      // TODO irngs => irngs[ncp_irng..end]
-      set_union(cp_irngs, irngs, tmp_irng, std::greater<>{});
+      range_t r{irngs.begin() + ncp_irng, irngs.end()};
+      set_union(cp_irngs, r, tmp_irng, std::greater<>{});
       update_rngs();
     }
-    set_union(irngs, cp_irngs, tmp_irng, std::greater<>{});
-  };
+    tmp_irng.resize(irngs.size() + cp_irngs.size());
+    tmp_irng.assign(irngs.begin(), irngs.begin() + ncp_irng);
+    range_t r{irngs.begin() + ncp_irng, irngs.end()};
+    union_save(r, cp_irngs, tmp_irng, tmp_irng.begin() + ncp_irng, std::greater<>{});
+    swap(irngs, tmp_irng);
+    std::reverse(irngs.begin() + ncp_irng, irngs.end());
+  }
 
-
-  utf8_consumer consumer(s);
-  char_int c = consumer.bumpc();
-
-  auto scan_bracket = [&]{
+  void scan_bracket() {
     ts.clear();
     scan_intervals(consumer, ts, count_rngs());
     c = consumer.bumpc();
-  };
+  }
   
-  auto scan_or = [&]{
+  void scan_or() {
     ipipe = count_rngs()-1;
     bool const is_empty = rngs[ipipe].transitions.empty();
     if (!is_empty) {
@@ -281,29 +376,29 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     c = consumer.bumpc();
     states = stack.back().states;
     cap_stack.alternation();
-  };
+  }
 
-  auto scan_multi_one_or_more = [&]{
+  void scan_multi_one_or_more() {
     ts = rngs[stack.back().ipipe].transitions;
     set_transitions();
     c = consumer.bumpc();
-  };
+  }
 
-  auto scan_multi_optional = [&]{
-    c = consumer.bumpc();
-  };
-
-  auto scan_multi_zero_or_more = [&]{
+  void scan_multi_zero_or_more() {
     ts = rngs[stack.back().ipipe].transitions;
     set_transitions();
     c = consumer.bumpc();
-  };
+  }
 
-  auto scan_multi_interval = [&]{
+  void scan_multi_optional() {
+    c = consumer.bumpc();
+  }
+
+  bool scan_multi_interval() {
     auto start = consumer.str();
     char * end = 0;
 
-    auto exec_state = [&](unsigned long m, auto estate, auto check) {
+    auto exec_state = [&, this](unsigned long m, auto estate, auto check) {
       unsigned long n = 0;
 
       if (estate != MultiDup::Repeat) {
@@ -325,7 +420,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
         }
       }
 
-      repeat_multi_dup(m, n, estate);
+      this->repeat_multi_dup(m, n, estate);
     };
 
     auto repeat_element = [&](unsigned long n){
@@ -395,9 +490,9 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     consumer.str(end + 1);
     c = consumer.bumpc();
     return merge_irng;
-  };
+  }
 
-  auto scan_open = [&]{
+  void scan_open() {
     if (cap_stack.is_full(cap_level())) {
       throw std::runtime_error("capture overflow");
     }
@@ -431,14 +526,14 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     iends.clear();
     irngs.clear();
     irngs.push_back(ipipe);
-  };
+  }
 
-  auto scan_close = [&]{
+  void scan_close() {
     if (!cap_level()) {
       throw std::runtime_error("unmatched )");
     }
     
-    auto copy_first = [&rngs, &stack]{
+    auto copy_first = [this]{
       auto & irngs_prev = stack.back().irngs;
       auto & src_rng = rngs[stack.back().ipipe].transitions;
       for (auto & i : irngs_prev) {
@@ -448,13 +543,13 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
       }
     };
     
-    auto merge_group = [&irngs, &stack]{
+    auto merge_group = [this]{
       auto & irngs_prev = stack.back().irngs;
       irngs_prev.insert(irngs_prev.end(), irngs.begin(), irngs.end());
       irngs = std::move(irngs_prev);
     };
     
-    auto merge_group_if = [&irngs, &stack, &merge_group]{
+    auto merge_group_if = [this, &merge_group]{
       // TODO ngs[stack.back().ipipe] and iend
       if (irngs.end() != std::find(irngs.begin(), irngs.end(), stack.back().ipipe)) {
         merge_group();
@@ -519,7 +614,7 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
         }
       }
       break;
-      default: /*copy_first(); merge_group_if()*/;
+      default: copy_first(); merge_group_if();
     }
 
     ipipe = stack[stack.size()-2].ipipe;
@@ -538,9 +633,9 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
         }
       }
     }
-  };
+  }
 
-  auto scan_begin = [&]{
+  void scan_begin() {
     if (irngs.front() != 0) {
       ts.clear();
       for (auto & i : irngs) {
@@ -552,17 +647,17 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     }
     states |= Range::Begin;
     c = consumer.bumpc();
-  };
+  }
 
-  auto scan_end = [&]{
+  void scan_end() {
     for (auto i : irngs) {
       rngs[i].states |= Range::End;
       rngs[i].states &= ~Range::Normal;
     }
     c = consumer.bumpc();
-  };
+  }
 
-  auto scan_normal = [&]{
+  void scan_normal() {
     Event const e = [&]() {
       if (c == '.') {
         return Event{char_int{}, ~char_int{}};
@@ -580,18 +675,18 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     auto const n = count_rngs();
     ts.push_back({e, n});
     c = consumer.bumpc();
-  };
+  }
 
-  auto scan_single_one_or_more = [&]{
+  void scan_single_one_or_more() {
     set_transitions();
     irngs.clear();
     irngs.push_back(count_rngs());
     new_range(std::true_type{});
     rngs.back().transitions = ts;
     c = consumer.bumpc();
-  };
+  }
 
-  auto scan_single_zero_or_more = [&]{
+  void scan_single_zero_or_more() {
     set_transitions();
     irngs.push_back(count_rngs());
     {
@@ -601,9 +696,9 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     }
     rngs.back().transitions = ts;
     c = consumer.bumpc();
-  };
+  }
 
-  auto scan_single_optional = [&]{
+  void scan_single_optional() {
     set_transitions();
     irngs.push_back(count_rngs());
     {
@@ -612,9 +707,9 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
       states |= has_begin;
     }
     c = consumer.bumpc();
-  };
+  }
 
-  auto scan_single_interval = [&]{
+  void scan_single_interval() {
     auto start = consumer.str();
     char * end = 0;
 
@@ -689,61 +784,25 @@ falcon::regex_dfa::Ranges falcon::regex_dfa::scan(const char * s)
     }
     consumer.str(end + 1);
     c = consumer.bumpc();
-  };
+  }
 
-  auto add_single_range = [&]{
+  void add_single_range() {
     set_transitions();
     irngs.clear();
     irngs.push_back(count_rngs());
     new_range(std::true_type{});
-  };
-
-  auto check_no_repetition = [&]{
-    switch (c) {
-      case '?': case '+': case '*': case '{':
-        throw std::runtime_error("syntaxe error ? + * {");
-    }
-  };
-
-  check_no_repetition();
-  while (c) {
-    enum { Transition, Character };
-
-    if ([&]{
-      switch (c) {
-        case '[': scan_bracket(); return Character;
-        case '|': scan_or(); return Transition;
-        case '(': scan_open(); return Transition;
-        case ')': scan_close(); return Transition;
-        case '^': scan_begin(); return Transition;
-        case '$': scan_end(); return Transition;
-        default: scan_normal(); return Character;
-      }
-    }()) {
-      switch (c) {
-        case '+': scan_single_one_or_more(); break;
-        case '*': scan_single_zero_or_more(); break;
-        case '?': scan_single_optional(); break;
-        case '{': scan_single_interval(); break;
-        default: add_single_range();
-      }
-    }
-    else {
-      check_no_repetition();
-    }
   }
+};
 
+}
 
-  for (auto ap : {&iends, &irngs}) {
-    for (auto i : *ap) {
-      if (!(rngs[i].states & Range::End)) {
-        rngs[i].states |= Range::Final | states;
-        rngs[i].states &= ~Range::Normal;
-      }
-    }
-  }
+Ranges scan(const char * s)
+{
+  basic_scanner scanner;
+  scanner.prepare();
+  scanner.scan(s);
+  return scanner.final();
+}
 
-  rngs.capture_table = std::move(cap_stack.capture_table);
-
-  return rngs;
+}
 }
