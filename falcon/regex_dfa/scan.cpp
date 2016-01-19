@@ -12,18 +12,21 @@ namespace falcon {
 namespace regex_dfa {
 namespace {
 
+using index_type = unsigned;
+using size_t = unsigned;
+
 struct Stack {
-  std::vector<unsigned> iends;
-  std::vector<unsigned> irngs;
+  std::vector<index_type> iends;
+  std::vector<index_type> irngs;
   falcon::regex_dfa::Range::State states;
-  unsigned ipipe;
-  unsigned count_pipe;
+  index_type ipipe;
+  size_t count_pipe;
 };
 
 class CapStack
 {
-  using cap_flags_t = std::size_t;
-  static constexpr std::size_t max_cap_level = sizeof(cap_flags_t) * 8;
+  using cap_flags_t = unsigned long long;
+  static constexpr cap_flags_t max_cap_level = sizeof(cap_flags_t) * __CHAR_BIT__;
   unsigned nb_cap = 0;
   cap_flags_t cap_flags = 0;
   unsigned stack_capture[max_cap_level];
@@ -94,9 +97,8 @@ private:
 };
 
 struct Pipe {
-  unsigned old_next;
-  unsigned size;
-  bool ts_is_empty;
+  index_type ipipe;
+  index_type irngs_size;
 };
 
 template<class It>
@@ -117,9 +119,9 @@ struct basic_scanner
   CapStack cap_stack;
  
   Ranges rngs;
-  std::vector<unsigned> irngs;
-  std::vector<unsigned> iends;
-  unsigned ipipe;
+  std::vector<index_type> irngs;
+  std::vector<index_type> iends;
+  index_type ipipe;
 
   Range::State states;
   
@@ -178,6 +180,13 @@ struct basic_scanner
   
   Ranges final() 
   {
+    if (group_close() && !(rngs[0].states & Range::End)) {
+      rngs[0].states |= Range::Final;
+      rngs[0].states &= ~Range::Normal;
+    }
+    //pipe_stack.clear();
+    //irngs.insert(irngs.end(), iends.begin(), iends.end());
+
     auto re_states = [this](auto & iarr){
       for (auto i : iarr) {
         if (!(rngs[i].states & Range::End)) {
@@ -192,6 +201,60 @@ struct basic_scanner
 
     rngs.capture_table = std::move(cap_stack.capture_table);
     return std::move(rngs);
+  }
+  
+  /// \return  true if count_rngs()-1 in ipipes, otherwhise false
+  bool group_close() 
+  {
+    //if (ipipe == stack.back().ipipe) {
+    //  return true;
+    //}
+    unsigned new_i = count_rngs()-1u;
+    bool has_ipipe = ipipe == new_i;
+    ipipe = stack.back().ipipe;
+    
+    unsigned const count_pipe = unsigned(pipe_stack.size() - stack.back().count_pipe);
+    assert(count_pipe <= pipe_stack.size());
+    auto first = pipe_stack.end() - count_pipe;
+    auto last = pipe_stack.end();
+    auto p = iends.begin();
+    auto cur_ipipe = ipipe;
+    
+    for (; first != last; ++first) {
+      auto old = first->ipipe;
+
+      assert(first->irngs_size <= iends.size() - (iends.begin() - p));
+      auto e = p + first->irngs_size;
+      for (; p != e; ++p) {
+        if (*p == cur_ipipe) {
+          has_ipipe = true;            
+        }
+        if (*p == old) {
+          *p = new_i;
+        }
+      }
+      
+      auto i = cur_ipipe;
+      auto ie = i + first->irngs_size;
+      assert(ie <= rngs.size());
+      for (; i != ie; ++i) {
+        for (Transition & t : rngs[i].transitions) {
+          if (t.next == old) {
+            t.next = new_i;
+          }
+        }
+      }
+      cur_ipipe = old;
+    }
+  
+    first = pipe_stack.end() - count_pipe;
+    Transitions & ts_dest = rngs[ipipe].transitions;
+    for (; first != last; ++first) {
+      Transitions & ts_src = rngs[first->ipipe].transitions;
+      ts_dest.insert(ts_dest.end(), ts_src.begin(), ts_src.end());
+    }
+
+    return has_ipipe;
   }
   
   void check_no_repetition() {
@@ -237,22 +300,21 @@ struct basic_scanner
   template<class EState>
   void repeat_multi_dup(unsigned long m, unsigned long n, EState estate)
   {
+//     std::cout << ">> irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
     auto const sz = rngs.size();
     new_rng.assign(&rngs[ipipe/*s.back()*/], &rngs[sz]);
     auto count_rng_added = unsigned(new_rng.size() - 1u);
 
-    auto const ncp_irng = static_cast<unsigned>(std::partition(
-      irngs.begin()
-    , irngs.end()
-    , [&](auto i) {
-      return i <= ipipe;
-    }) - irngs.begin());
+    unsigned const skip_ipipe = irngs[0] == ipipe ? 1u : 0u;
 
     decltype(irngs) cp_irngs;
-    // TODO unique_ptr{b, p, e}
     decltype(cp_irngs) tmp_irng;
     if (estate == MultiDup::Conditional) {
-      cp_irngs.assign(irngs.begin() + ncp_irng, irngs.end());
+      cp_irngs.assign(irngs.begin(), irngs.end());
+      if (!skip_ipipe) {
+        cp_irngs.push_back(ipipe);
+      }
+//       std::cout << "cp_irngs: "; for (auto && x : cp_irngs) std::cout << x << " "; std::cout << "\n";
     }
 
     auto union_save = [](auto & c, auto const & c2, auto & tmp, auto tmp_begin, auto cmp) {
@@ -273,24 +335,24 @@ struct basic_scanner
     };
 
     auto update_transition_indexes = [&] {
-      std::for_each(new_rng.begin(), new_rng.end(), [&](auto & r) {
+      for (auto & r : new_rng) {
         for (auto && t : r.transitions) {
           t.next += count_rng_added;
         }
-      });
+      };
     };
     
     std::vector<unsigned> extended_irng;
-    std::for_each(irngs.begin(), irngs.begin() + ncp_irng, [&](unsigned i) {
-      Transitions const & ts = rngs[i].transitions;
-      for (auto & t : ts) {
+    if (skip_ipipe) {
+      for (auto & t : rngs[0].transitions) {
         // TODO lower_bounds
         if (std::find(irngs.begin(), irngs.end(), t.next) != irngs.end()) {
           extended_irng.push_back(static_cast<unsigned>(t.next));
         }
       }
-    });
+    }
     std::reverse(extended_irng.begin(), extended_irng.end());
+//     std::cout << "extended_irng: "; for (auto && x : extended_irng) std::cout << x << " "; std::cout << "\n";
     
     auto insert_transitions = [&](Transitions & transitions_added){
       for (auto & i : irngs) {
@@ -298,14 +360,24 @@ struct basic_scanner
         r.states |= states;
         set_union(r.capstates, cap_stack.captures(), tmp_capstates, std::less<>{});
         r.transitions.insert(r.transitions.end(), transitions_added.begin(), transitions_added.end());
-       }
+      }
     };
+    
+    auto insert_states = [&](){
+      for (auto & i : irngs) {
+        Range & r = rngs[i];
+        r.states |= states;
+        set_union(r.capstates, cap_stack.captures(), tmp_capstates, std::less<>{});
+      }
+    };
+
+    rngs.reserve((new_rng.size() - 1) * (m - 1));
 
     auto update_rngs = [&] {
       update_transition_indexes();
       rngs.insert(rngs.end(), new_rng.begin() + 1, new_rng.end());
       insert_transitions(new_rng[0].transitions);
-      for (auto p = irngs.begin() + ncp_irng, e = irngs.end(); p != e; ++p) {
+      for (auto p = irngs.begin() + skip_ipipe, e = irngs.end(); p != e; ++p) {
         *p += count_rng_added;
       }
       irngs.insert(irngs.end(), extended_irng.begin(), extended_irng.end());
@@ -313,44 +385,48 @@ struct basic_scanner
 
     while (--m) {
       if (estate == MultiDup::Conditional) {
-        irngs.push_back(ipipe);
+//         std::cout << ipipe << "\n";
         set_union(irngs, cp_irngs, tmp_irng, std::greater<>{});
       }
       update_rngs();
+//       std::cout << "-- irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
     }
 
     if (estate == MultiDup::RepeatAndMore) {
       ts = new_rng[0].transitions;
     }
 
-    if (estate == MultiDup::Conditional) {
-      irngs.push_back(ipipe);
-    }
-
     if (estate != MultiDup::RepeatAndConditional) {
+//       std::cout << "<< irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
+      insert_states();
       return ;
     }
 
     if (!n) {
+//       std::cout << "<< irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
+      insert_states();
       return ;
     }
 
-    std::reverse(irngs.begin() + ncp_irng, irngs.end());
-    cp_irngs.assign(irngs.begin() + ncp_irng, irngs.end());
+    std::reverse(irngs.begin() + skip_ipipe, irngs.end());
+    cp_irngs.assign(irngs.begin() + skip_ipipe, irngs.end());
     
     using range_t = range_iterator<decltype(irngs.begin())>;
 
     while (n--) {
-      range_t r{irngs.begin() + ncp_irng, irngs.end()};
+      range_t r{irngs.begin() + skip_ipipe, irngs.end()};
       set_union(cp_irngs, r, tmp_irng, std::greater<>{});
       update_rngs();
     }
+//     std::cout << "   irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
     tmp_irng.resize(irngs.size() + cp_irngs.size());
-    tmp_irng.assign(irngs.begin(), irngs.begin() + ncp_irng);
-    range_t r{irngs.begin() + ncp_irng, irngs.end()};
-    union_save(r, cp_irngs, tmp_irng, tmp_irng.begin() + ncp_irng, std::greater<>{});
+    tmp_irng.assign(irngs.begin(), irngs.begin() + skip_ipipe);
+    range_t r{irngs.begin() + skip_ipipe, irngs.end()};
+    union_save(r, cp_irngs, tmp_irng, tmp_irng.begin() + skip_ipipe, std::greater<>{});
     swap(irngs, tmp_irng);
-    std::reverse(irngs.begin() + ncp_irng, irngs.end());
+    std::reverse(irngs.begin() + skip_ipipe, irngs.end());
+    insert_states();
+//     std::cout << "<< irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
   }
 
   void scan_bracket() {
@@ -369,7 +445,7 @@ struct basic_scanner
       rngs.push_back({{}, {}, {}});
       ipipe = count_rngs()-1;
     }
-    pipe_stack.push_back({ipipe, unsigned(irngs.size()), is_empty});
+    pipe_stack.push_back({ipipe, unsigned(irngs.size())});
     iends.insert(iends.end(), irngs.begin(), irngs.end());
     irngs.clear();
     irngs.push_back(ipipe);
@@ -533,9 +609,13 @@ struct basic_scanner
       throw std::runtime_error("unmatched )");
     }
     
+    bool const has_ipipe = group_close();
+    pipe_stack.resize(stack.back().count_pipe);
+    irngs.insert(irngs.end(), iends.begin(), iends.end());
+    
     auto copy_first = [this]{
       auto & irngs_prev = stack.back().irngs;
-      auto & src_rng = rngs[stack.back().ipipe].transitions;
+      auto & src_rng = rngs[ipipe].transitions;
       for (auto & i : irngs_prev) {
         if (&rngs[i].transitions != &src_rng) {
           rngs[i].transitions.insert(rngs[i].transitions.end(), src_rng.begin(), src_rng.end());
@@ -549,58 +629,10 @@ struct basic_scanner
       irngs = std::move(irngs_prev);
     };
     
-    auto merge_group_if = [this, &merge_group]{
-      // TODO ngs[stack.back().ipipe] and iend
-      if (irngs.end() != std::find(irngs.begin(), irngs.end(), stack.back().ipipe)) {
-        merge_group();
-      }
-    };
-
     c = consumer.bumpc();
     
-    ipipe = stack.back().ipipe;
-    {
-      auto new_i = count_rngs()-1;
-      unsigned count_pipe = unsigned(pipe_stack.size() - stack.back().count_pipe);
-      assert(count_pipe <= pipe_stack.size());
-      auto first = pipe_stack.end() - count_pipe;
-      auto last = pipe_stack.end();
-      auto p = iends.begin();
-      auto cur_ipipe = ipipe;
-      for (; first != last; ++first) {
-        auto old = first->old_next;
-
-        assert(first->size <= iends.size() - (iends.begin() - p));
-        auto e = p + first->size;
-        for (; p != e; ++p) {
-          if (*p == old) {
-            *p = new_i;
-          }
-        }
-        
-        auto i = cur_ipipe;
-        auto ie = i + first->size;
-        assert(ie <= rngs.size());
-        for (; i != ie; ++i) {
-          for (Transition & t : rngs[i].transitions) {
-            if (t.next == old) {
-              t.next = new_i;
-            }
-          }
-        }
-        cur_ipipe = old;
-        
-        Transitions & ts_dest = rngs[ipipe].transitions;
-        Transitions & ts_src = rngs[old].transitions;
-        ts_dest.insert(ts_dest.end(), ts_src.begin(), ts_src.end());
-      }
-      pipe_stack.resize(pipe_stack.size() - count_pipe);
-    }
-    
-    irngs.insert(irngs.end(), iends.begin(), iends.end());
-    
     switch (c) {
-      case '+': scan_multi_one_or_more(); copy_first(); merge_group_if(); break;
+      case '+': scan_multi_one_or_more(); copy_first(); if (has_ipipe) merge_group(); break;
       case '*': scan_multi_zero_or_more(); copy_first(); merge_group(); break;
       case '?': scan_multi_optional(); copy_first(); merge_group(); break;
       case '{': {
@@ -609,12 +641,12 @@ struct basic_scanner
         if (m) {
           merge_group(); 
         }
-        else {
-          merge_group_if(); 
+        else if (has_ipipe) {
+          merge_group(); 
         }
       }
       break;
-      default: copy_first(); merge_group_if();
+      default: copy_first(); if (has_ipipe) merge_group();
     }
 
     ipipe = stack[stack.size()-2].ipipe;
