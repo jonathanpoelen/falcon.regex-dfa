@@ -1,23 +1,24 @@
 project(falcon.regex-dfa)
 cmake_minimum_required(VERSION 2.8)
-aux_source_directory(. SRC_LIST)
 
-# find_program(CCACHE_FOUND ccache)
-# if(CCACHE_FOUND)
-#   set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
-#   set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
-# endif(CCACHE_FOUND)
 
 include(CMakeDefinitions.txt)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -iquote ${PROJECT_SOURCE_DIR}/.")
 
-add_definitions(
-  -g
-  -fsanitize=address
-)
-link_libraries(-lasan)
+# set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
+# set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 
+if (DEFINED ASAN)
+  add_definitions(-fsanitize=address)
+  link_libraries(-lasan)
+endif()
+if (DEFINED DEBUG_FULL)
+  add_definitions(-D_GLIBCXX_DEBUG)
+endif()
+
+
+# aux_source_directory(. SRC_LIST)
 # file(GLOB headers_SRC "*.hpp")
 
 set(SRC falcon/regex_dfa/)

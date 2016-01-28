@@ -5,7 +5,7 @@
 #include <algorithm>
 
 #include <cassert>
-#include <iostream>
+// #include <iostream>
 // #include "print_automaton.hpp"
 
 namespace falcon { 
@@ -131,12 +131,17 @@ struct basic_scanner
   /// garbage 
   Captures tmp_capstates;
   std::vector<Range> new_rng;
+  decltype(irngs) cp_irngs;
+  decltype(cp_irngs) tmp_irng;
   /// @}
   
   utf8_consumer consumer {nullptr};
   char_int c;
   
   void prepare() {
+    stack.reserve(8);
+    rngs.reserve(8);
+    irngs.reserve(8);
     stack.push_back({{}, {}, Range::Normal, 0, 0});
     rngs.push_back({Range::Normal, {}, {}});
     irngs.push_back(0);
@@ -180,6 +185,10 @@ struct basic_scanner
   
   Ranges final() 
   {
+    if (stack.size() > 1) {
+      throw std::runtime_error("unmatched )");
+    }
+
     if (group_close() && !(rngs[0].states & Range::End)) {
       rngs[0].states |= Range::Final;
       rngs[0].states &= ~Range::Normal;
@@ -250,6 +259,9 @@ struct basic_scanner
     first = pipe_stack.end() - count_pipe;
     Transitions & ts_dest = rngs[ipipe].transitions;
     for (; first != last; ++first) {
+      if (ipipe == first->ipipe) {
+        continue;
+      }
       Transitions & ts_src = rngs[first->ipipe].transitions;
       ts_dest.insert(ts_dest.end(), ts_src.begin(), ts_src.end());
     }
@@ -300,24 +312,21 @@ struct basic_scanner
   template<class EState>
   void repeat_multi_dup(unsigned long m, unsigned long n, EState estate)
   {
-//     std::cout << ">> irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
-    auto const sz = rngs.size();
-    new_rng.assign(&rngs[ipipe/*s.back()*/], &rngs[sz]);
+    new_rng.assign(rngs.begin() + ipipe, rngs.end());
     auto count_rng_added = unsigned(new_rng.size() - 1u);
 
     unsigned const skip_ipipe = irngs[0] == ipipe ? 1u : 0u;
 
-    decltype(irngs) cp_irngs;
-    decltype(cp_irngs) tmp_irng;
+    cp_irngs.clear();
+    tmp_irng.clear();
     if (estate == MultiDup::Conditional) {
-      cp_irngs.assign(irngs.begin(), irngs.end());
       if (!skip_ipipe) {
         cp_irngs.push_back(ipipe);
       }
-//       std::cout << "cp_irngs: "; for (auto && x : cp_irngs) std::cout << x << " "; std::cout << "\n";
+      cp_irngs.insert(cp_irngs.end(), irngs.begin(), irngs.end());
     }
 
-    auto union_save = [](auto & c, auto const & c2, auto & tmp, auto tmp_begin, auto cmp) {
+    auto union_safe = [](auto & c, auto const & c2, auto & tmp, auto tmp_begin, auto cmp) {
       tmp.erase(
         std::set_union(
           c.begin(), c.end(),
@@ -328,9 +337,9 @@ struct basic_scanner
       );
     };
 
-    auto set_union = [&union_save](auto & c, auto const & c2, auto & tmp, auto cmp) {
+    auto set_union = [&union_safe](auto & c, auto const & c2, auto & tmp, auto cmp) {
       tmp.resize(c.size() + c2.size());
-      union_save(c, c2, tmp, tmp.begin(), cmp);
+      union_safe(c, c2, tmp, tmp.begin(), cmp);
       swap(c, tmp);
     };
 
@@ -351,8 +360,6 @@ struct basic_scanner
         }
       }
     }
-    std::reverse(extended_irng.begin(), extended_irng.end());
-//     std::cout << "extended_irng: "; for (auto && x : extended_irng) std::cout << x << " "; std::cout << "\n";
     
     auto insert_transitions = [&](Transitions & transitions_added){
       for (auto & i : irngs) {
@@ -371,25 +378,25 @@ struct basic_scanner
       }
     };
 
+    using range_t = range_iterator<decltype(irngs.begin())>;
+
     rngs.reserve((new_rng.size() - 1) * (m - 1));
 
     auto update_rngs = [&] {
       update_transition_indexes();
       rngs.insert(rngs.end(), new_rng.begin() + 1, new_rng.end());
       insert_transitions(new_rng[0].transitions);
-      for (auto p = irngs.begin() + skip_ipipe, e = irngs.end(); p != e; ++p) {
-        *p += count_rng_added;
+      for (auto && i : range_t{irngs.begin() + skip_ipipe, irngs.end()}) {
+        i += count_rng_added;
       }
-      irngs.insert(irngs.end(), extended_irng.begin(), extended_irng.end());
+      set_union(irngs, extended_irng, tmp_irng, std::less<>{});
     };
-
+    
     while (--m) {
       if (estate == MultiDup::Conditional) {
-//         std::cout << ipipe << "\n";
-        set_union(irngs, cp_irngs, tmp_irng, std::greater<>{});
+        set_union(irngs, cp_irngs, tmp_irng, std::less<>{});
       }
       update_rngs();
-//       std::cout << "-- irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
     }
 
     if (estate == MultiDup::RepeatAndMore) {
@@ -397,36 +404,24 @@ struct basic_scanner
     }
 
     if (estate != MultiDup::RepeatAndConditional) {
-//       std::cout << "<< irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
       insert_states();
       return ;
     }
 
     if (!n) {
-//       std::cout << "<< irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
       insert_states();
       return ;
     }
 
-    std::reverse(irngs.begin() + skip_ipipe, irngs.end());
     cp_irngs.assign(irngs.begin() + skip_ipipe, irngs.end());
     
-    using range_t = range_iterator<decltype(irngs.begin())>;
-
     while (n--) {
       range_t r{irngs.begin() + skip_ipipe, irngs.end()};
-      set_union(cp_irngs, r, tmp_irng, std::greater<>{});
+      set_union(cp_irngs, r, tmp_irng, std::less<>{});
       update_rngs();
     }
-//     std::cout << "   irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
-    tmp_irng.resize(irngs.size() + cp_irngs.size());
-    tmp_irng.assign(irngs.begin(), irngs.begin() + skip_ipipe);
-    range_t r{irngs.begin() + skip_ipipe, irngs.end()};
-    union_save(r, cp_irngs, tmp_irng, tmp_irng.begin() + skip_ipipe, std::greater<>{});
-    swap(irngs, tmp_irng);
-    std::reverse(irngs.begin() + skip_ipipe, irngs.end());
+    set_union(irngs, cp_irngs, tmp_irng, std::less<>{});
     insert_states();
-//     std::cout << "<< irngs: "; for (auto && x : irngs) std::cout << x << " "; std::cout << "\n";
   }
 
   void scan_bracket() {
@@ -775,6 +770,7 @@ struct basic_scanner
 
       repeat_element(n, []{});
     };
+
     // {,n}
     if (*start == ',') {
       ++start;
