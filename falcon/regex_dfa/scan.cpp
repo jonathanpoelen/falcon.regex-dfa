@@ -99,6 +99,7 @@ private:
 struct Pipe {
   index_type ipipe;
   index_type irngs_size;
+  bool is_empty;
 };
 
 template<class It>
@@ -111,6 +112,31 @@ struct range_iterator
 };
 
 using std::swap;
+
+/// @{
+/// utility
+template<class C1, class C2, class C3, class It, class Cmp = std::less<>>
+static void union_safe(C1 & c, C2 const & c2, C3 & tmp, It tmp_begin, Cmp cmp = Cmp{}) {
+  tmp.erase(
+    std::set_union(
+      c.begin(), c.end(),
+      c2.begin(), c2.end(),
+      tmp_begin, cmp
+    ),
+    tmp.end()
+  );
+}
+
+template<class C, class C2, class Cmp = std::less<>>
+static void set_union(C & c, C2 const & c2, C & tmp, Cmp cmp = Cmp{}) {
+  if (!c2.size()) {
+    return ;
+  }
+  tmp.resize(c.size() + c2.size());
+  union_safe(c, c2, tmp, tmp.begin(), cmp);
+  swap(c, tmp);
+}
+/// @}
 
 struct basic_scanner
 {
@@ -227,20 +253,25 @@ struct basic_scanner
     auto first = pipe_stack.end() - count_pipe;
     auto last = pipe_stack.end();
     auto p = iends.begin();
+    auto cp = p;
     auto cur_ipipe = ipipe;
     
     for (; first != last; ++first) {
       auto old = first->ipipe;
 
       assert(first->irngs_size <= iends.size() - (iends.begin() - p));
+      assert(first->irngs_size);
       auto e = p + first->irngs_size;
-      for (; p != e; ++p) {
-        if (*p == cur_ipipe) {
-          has_ipipe = true;            
+      has_ipipe = has_ipipe || p[0] == cur_ipipe;
+      if (!first->is_empty) {
+        auto last = e[-1] == old ? e-1 : e;
+        if (p == cp) {
+          cp = last;
         }
-        if (*p == old) {
-          *p = new_i;
+        else {
+          cp = std::copy(p, last, cp);
         }
+        p = e;
       }
       
       auto i = cur_ipipe;
@@ -255,15 +286,16 @@ struct basic_scanner
       }
       cur_ipipe = old;
     }
+    
+    iends.erase(cp, iends.end());
   
     first = pipe_stack.end() - count_pipe;
     Transitions & ts_dest = rngs[ipipe].transitions;
     for (; first != last; ++first) {
-      if (ipipe == first->ipipe) {
-        continue;
+      if (ipipe != first->ipipe) {
+        Transitions & ts_src = rngs[first->ipipe].transitions;
+        ts_dest.insert(ts_dest.end(), ts_src.begin(), ts_src.end());
       }
-      Transitions & ts_src = rngs[first->ipipe].transitions;
-      ts_dest.insert(ts_dest.end(), ts_src.begin(), ts_src.end());
     }
 
     return has_ipipe;
@@ -318,30 +350,12 @@ struct basic_scanner
     unsigned const skip_ipipe = irngs[0] == ipipe ? 1u : 0u;
 
     cp_irngs.clear();
-    tmp_irng.clear();
     if (estate == MultiDup::Conditional) {
       if (!skip_ipipe) {
         cp_irngs.push_back(ipipe);
       }
       cp_irngs.insert(cp_irngs.end(), irngs.begin(), irngs.end());
     }
-
-    auto union_safe = [](auto & c, auto const & c2, auto & tmp, auto tmp_begin, auto cmp) {
-      tmp.erase(
-        std::set_union(
-          c.begin(), c.end(),
-          c2.begin(), c2.end(),
-          tmp_begin, cmp
-        ),
-        tmp.end()
-      );
-    };
-
-    auto set_union = [&union_safe](auto & c, auto const & c2, auto & tmp, auto cmp) {
-      tmp.resize(c.size() + c2.size());
-      union_safe(c, c2, tmp, tmp.begin(), cmp);
-      swap(c, tmp);
-    };
 
     auto update_transition_indexes = [&] {
       for (auto & r : new_rng) {
@@ -354,27 +368,18 @@ struct basic_scanner
     std::vector<unsigned> extended_irng;
     if (skip_ipipe) {
       for (auto & t : rngs[0].transitions) {
-        // TODO lower_bounds
-        if (std::find(irngs.begin(), irngs.end(), t.next) != irngs.end()) {
+        if (std::binary_search(irngs.begin(), irngs.end(), t.next)) {
           extended_irng.push_back(static_cast<unsigned>(t.next));
         }
       }
     }
     
-    auto insert_transitions = [&](Transitions & transitions_added){
+    auto insert_transitions = [&](Transitions const & transitions_added){
       for (auto & i : irngs) {
         Range & r = rngs[i];
         r.states |= states;
-        set_union(r.capstates, cap_stack.captures(), tmp_capstates, std::less<>{});
+        set_union(r.capstates, cap_stack.captures(), tmp_capstates);
         r.transitions.insert(r.transitions.end(), transitions_added.begin(), transitions_added.end());
-      }
-    };
-    
-    auto insert_states = [&](){
-      for (auto & i : irngs) {
-        Range & r = rngs[i];
-        r.states |= states;
-        set_union(r.capstates, cap_stack.captures(), tmp_capstates, std::less<>{});
       }
     };
 
@@ -389,12 +394,12 @@ struct basic_scanner
       for (auto && i : range_t{irngs.begin() + skip_ipipe, irngs.end()}) {
         i += count_rng_added;
       }
-      set_union(irngs, extended_irng, tmp_irng, std::less<>{});
+      set_union(irngs, extended_irng, tmp_irng);
     };
     
     while (--m) {
       if (estate == MultiDup::Conditional) {
-        set_union(irngs, cp_irngs, tmp_irng, std::less<>{});
+        set_union(irngs, cp_irngs, tmp_irng);
       }
       update_rngs();
     }
@@ -402,6 +407,14 @@ struct basic_scanner
     if (estate == MultiDup::RepeatAndMore) {
       ts = new_rng[0].transitions;
     }
+    
+    auto insert_states = [&](){
+      for (auto & i : irngs) {
+        Range & r = rngs[i];
+        r.states |= states;
+        set_union(r.capstates, cap_stack.captures(), tmp_capstates);
+      }
+    };
 
     if (estate != MultiDup::RepeatAndConditional) {
       insert_states();
@@ -417,10 +430,10 @@ struct basic_scanner
     
     while (n--) {
       range_t r{irngs.begin() + skip_ipipe, irngs.end()};
-      set_union(cp_irngs, r, tmp_irng, std::less<>{});
+      set_union(cp_irngs, r, tmp_irng);
       update_rngs();
     }
-    set_union(irngs, cp_irngs, tmp_irng, std::less<>{});
+    set_union(irngs, cp_irngs, tmp_irng);
     insert_states();
   }
 
@@ -431,17 +444,28 @@ struct basic_scanner
   }
   
   void scan_or() {
+    bool const is_empty = (count_rngs()-1 == ipipe);
     ipipe = count_rngs()-1;
-    bool const is_empty = rngs[ipipe].transitions.empty();
-    if (!is_empty) {
+    if (!rngs[ipipe].transitions.empty()) {
       Range & rng_base = rngs[stack.back().ipipe];
       states = rng_base.states;
       // TODO cap_stack
       rngs.push_back({{}, {}, {}});
       ipipe = count_rngs()-1;
     }
-    pipe_stack.push_back({ipipe, unsigned(irngs.size())});
-    iends.insert(iends.end(), irngs.begin(), irngs.end());
+    if (is_empty && !iends.empty() && iends.back() == irngs.front()) {
+      pipe_stack.back().is_empty = true;
+      pipe_stack.push_back({ipipe, unsigned(irngs.size()), unsigned(irngs.size())});
+    }
+    else {
+      pipe_stack.push_back({ipipe, unsigned(irngs.size()), false});
+      if (iends.empty()) {
+        swap(iends, irngs);
+      }
+      else {
+        iends.insert(iends.end(), irngs.begin(), irngs.end());
+      }
+    }
     irngs.clear();
     irngs.push_back(ipipe);
     c = consumer.bumpc();
@@ -606,7 +630,10 @@ struct basic_scanner
     
     bool const has_ipipe = group_close();
     pipe_stack.resize(stack.back().count_pipe);
-    irngs.insert(irngs.end(), iends.begin(), iends.end());
+    if (!iends.empty()) {
+      iends.insert(iends.end(), irngs.begin(), irngs.end());
+      swap(iends, irngs);
+    }
     
     auto copy_first = [this]{
       auto & irngs_prev = stack.back().irngs;
@@ -620,7 +647,8 @@ struct basic_scanner
     
     auto merge_group = [this]{
       auto & irngs_prev = stack.back().irngs;
-      irngs_prev.insert(irngs_prev.end(), irngs.begin(), irngs.end());
+      auto const superimposed_idx = (irngs_prev.back() == irngs.front()) ? 1 : 0; 
+      irngs_prev.insert(irngs_prev.end(), irngs.begin() + superimposed_idx, irngs.end());
       irngs = std::move(irngs_prev);
     };
     
