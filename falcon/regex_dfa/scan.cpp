@@ -1,5 +1,6 @@
 #include "scan.hpp"
 #include "scan_intervals.hpp"
+#include "range_iterator.hpp"
 
 #include <stdexcept>
 #include <algorithm>
@@ -100,15 +101,6 @@ struct Pipe {
   index_type ipipe;
   index_type irngs_size;
   bool is_empty;
-};
-
-template<class It>
-struct range_iterator
-{
-  It first, last;
-  It begin() const { return first; }
-  It end() const { return last; }
-  std::size_t size() const { return last - first; }
 };
 
 using std::swap;
