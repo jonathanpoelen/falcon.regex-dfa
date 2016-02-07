@@ -40,7 +40,7 @@ std::ostream & operator<<(std::ostream & os, Transition const & t)
 {
   return os
     << colors[1]
-    << " [" << t.e.l << "-" << t.e.r << "]"
+    << "[" << t.e.l << "-" << t.e.r << "]"
        " ['" << char(t.e.l) << "'-'" << char(t.e.r) << "']"
     << reset_color
     << " → " << t.next
@@ -121,6 +121,16 @@ void print_table(std::vector<unsigned> const & capture_table)
 //   }
 // }
 
+struct Begin {
+  template<class Cont> static auto begin(Cont & cont) { using std::begin; return begin(cont); }
+  template<class Cont> static auto end(Cont & cont) { using std::end; return end(cont); }
+};
+
+struct RBegin {
+  template<class Cont> static auto begin(Cont & cont) { using std::rbegin; return rbegin(cont); }
+  template<class Cont> static auto end(Cont & cont) { using std::rend; return rend(cont); }
+};
+
 void print_automaton(const Ranges& rngs)
 {
   auto sz = rngs.size() * 2u;
@@ -131,42 +141,48 @@ void print_automaton(const Ranges& rngs)
   struct L { std::size_t n; enum { None, Start, Plug, Stop, Cont } e; };
   using Graph = std::vector<std::vector<L>>;
   
-  auto process_graph = [sz, &rngs](Graph & graph, auto next_filter_op, auto f_ok, auto process_line){
-    auto add_column = [sz, &graph](){
+  auto process_graph = [sz, &rngs](Graph & graph, auto is_next_op2, auto distance_next, auto a){
+    auto egraph = end(graph);
+    auto add_column = [sz, &graph, &egraph, a](){
       graph.emplace_back();
       graph.back().resize(sz, L{~std::size_t{}, L::None});
+      egraph = end(graph);
+      return egraph-1;
     };
-    add_column();
     
     unsigned i = 1;
-    auto first_rng = begin(rngs);
-    auto last_rng = end(rngs);
-    for (; first_rng != last_rng; ++first_rng) {
-      auto rng_num = std::size_t(first_rng - begin(rngs));
-      
-      auto first_trs = begin(first_rng->transitions);
-      auto last_trs = end(first_rng->transitions);
+    unsigned rng_num = 0;
+    auto first_rng = a.begin(rngs);
+    auto last_rng = a.end(rngs);
+    for (; first_rng != last_rng; ++first_rng, ++rng_num) {
+      auto first_trs = a.begin(first_rng->transitions);
+      auto last_trs = a.end(first_rng->transitions);
       for (; first_trs != last_trs; ++first_trs, ++i) {
         auto next = first_trs->next;
-        if (next_filter_op(rng_num, next)) {
+        if (is_next_op2(rng_num, next)) {
           continue;
         }
-        auto pgraph = std::find_if(begin(graph), end(graph), [i, next](auto & v){
+        auto pgraph = std::find_if(begin(graph), egraph, [i, next](auto & v){
           return v[i].n == next;
         });
-        if (end(graph) == pgraph) {
-          auto p = begin(graph);
-          do {
-            p = std::find_if(p, end(graph), [i](auto & v){
-              return v[i].e == L::None;
-            });
-          } while (p != end(graph) && !f_ok(&(*p)[i], first_rng, first_trs) && (++p, 1));
-          if (end(graph) == p) {
-            add_column();
-            p = end(graph)-1;
+        if (egraph == pgraph) {
+          auto dist = distance_next(first_rng, first_trs);
+          assert(i + dist >= 0);
+          assert(decltype(sz)(i + dist) < sz);
+          pgraph = std::find_if(begin(graph), egraph, [i](auto & v){
+            return v[i].e == L::None;
+          });
+
+          if (pgraph == egraph) {
+            pgraph = add_column();
           }
-          
-          process_line(&(*p)[i], first_rng, first_trs);
+
+          auto first = &(*pgraph)[i];
+          auto last = first + dist;
+          *first = {next, L::Start};
+          *last = {next, L::Stop};
+          assert(first != last);
+          std::fill(++first, last, L{next, L::Cont});
         }
         else {
           (*pgraph)[i].e = L::Plug;
@@ -178,60 +194,45 @@ void print_automaton(const Ranges& rngs)
   
   Graph graph;
   process_graph(
-    graph, std::greater_equal<>{}, 
-    [](auto, auto, auto){ return std::true_type{}; }, 
-    [&rngs](auto p, auto it_rng, auto it_trs){
-      auto next = it_trs->next;
-      std::size_t n = end(it_rng->transitions) - it_trs;
-      auto first_rng2 = it_rng;
-      auto last_rng2 = begin(rngs) + next;
-      while (++first_rng2 != last_rng2) {
-        n += first_rng2->transitions.size() + 2;
-      }
-      
-      *p = L{next, L::Start};
-      *std::fill_n(++p, n, L{next, L::Cont}) = L{next, L::Stop};
-    }
+    graph, 
+    std::greater_equal<>{}, 
+    [&rngs](auto it_rng, auto it_trs){
+      return std::accumulate(
+        it_rng+1, 
+        begin(rngs) + it_trs->next, 
+        end(it_rng->transitions) - it_trs + 1u, 
+        [](auto n, auto & rng) { return n + rng.transitions.size() + 2; }
+      );
+    }, 
+    Begin()
   );
   Graph graph2;
-  bool empty_graph2 = true;
   process_graph(
-    graph2, std::less<>{}, 
-    [&rngs](auto p, auto it_rng, auto it_trs){
-      p -= it_trs - begin(it_rng->transitions) + 1;
-      auto first_rng2 = begin(rngs) + it_trs->next;
-      for (; first_rng2 != it_rng; ++first_rng2) {
-        if (p->e != L::None) {
-          return false;
-        }
-        p -= first_rng2->transitions.size() + 2;
-      }
-      return true;
+    graph2, 
+    [&rngs](unsigned rev_rng_num, auto next) { 
+      return rngs.size() - rev_rng_num <= next; 
     }, 
-    [&rngs, &empty_graph2](auto p, auto it_rng, auto it_trs){
-      auto next = it_trs->next;
-      std::size_t n = it_trs - begin(it_rng->transitions) + 1;
-      auto first_rng2 = begin(rngs) + next;
-      for (; first_rng2 != it_rng; ++first_rng2) {
-        n += first_rng2->transitions.size() + 2;
-      }
-      
-      *p = L{next, L::Stop};
-      p -= n;
-      *p = L{next, L::Start};
-      std::fill_n(++p, n-1, L{next, L::Cont});
-      empty_graph2 = false;
-    }
+    [&rngs](auto rit_rng, auto it_trs){
+      return std::accumulate(
+        begin(rngs) + it_trs->next, 
+        rit_rng.base() - 1, 
+        rend(rit_rng->transitions) - it_trs, 
+        [](auto n, auto & rng) { return n + rng.transitions.size() + 2; }
+      );
+    }, 
+    RBegin()
   );
 
   auto igraph = 0;
-  auto print_tree =[&igraph, &graph, &graph2, empty_graph2]{
-    auto print_graph = [&igraph](Graph const & graph, auto ecmp) {
-      constexpr char const * borders[]{"  ", "┌─", "├─", "└─", "│ "};
+  auto print_tree =[sz, &igraph, &graph, &graph2]{
+    auto print_graph = [](Graph const & graph, auto rev, auto igraph) {
+      constexpr char const * borders_nor[]{"  ", "┌─", "├─", "└─", "│ "};
+      constexpr char const * borders_rev[]{"  ", "└─", "├─", "┌─", "│ "};
+      auto & borders = rev ? borders_rev : borders_nor;
 
-      unsigned i = 0;
-      unsigned pluged_color = nb_colors;
-      bool is_stop = false;
+      auto i = graph.size() - 1u;
+      auto pluged_color = nb_colors;
+      auto is_stop = false;
       auto first = rbegin(graph);
       auto last = rend(graph);
       std::cout << " ";
@@ -244,26 +245,24 @@ void print_automaton(const Ranges& rngs)
         std::cout << borders[e];
         if (L::Start <= e && L::Stop >= e) {
           pluged_color = i % nb_colors;
-          is_stop = (ecmp == e);
+          is_stop = (L::Stop == e);
           ++first;
           break;
         }
-        ++i;
+        --i;
       }
       
-      constexpr char const * borders2[]{"", "│", "│", "┴", "│"};
-      
       for (; first != last; ++first) {
-        ++i;
+        --i;
         auto const e = (*first)[igraph].e;
         if (e) {
-          std::cout << colors[i % nb_colors] << borders2[e] << colors[pluged_color] << "─";
+          std::cout << colors[i % nb_colors] << "│" << colors[pluged_color] << "─";
         }
         else {
           std::cout << colors[pluged_color] << "──";        
         }
       }
-      
+
       if (pluged_color == nb_colors) {
         std::cout << " " << reset_color;
       }
@@ -272,22 +271,23 @@ void print_automaton(const Ranges& rngs)
       }
     };
     
-    if (!empty_graph2) {
-      print_graph(graph2, L::Start);
+    if (!graph2.empty()) {
+      print_graph(graph2, true, sz - igraph - 1);
       std::cout << reset_color << "┆";      
     }
-    print_graph(graph, L::Stop);
+    print_graph(graph, false, igraph);
     
     ++igraph;
   };
-  
+
   for (auto & rng : rngs) {
     print_tree();
+    std::cout << " ";
     print_head_rng(rng, int(&rng-&rngs[0]));
     std::cout << "\n";
     for (auto & t : rng.transitions) {
       print_tree();
-      std::cout << t << "\n";
+      std::cout << " " << t << "\n";
     }
     print_tree();
     std::cout << "\n";
