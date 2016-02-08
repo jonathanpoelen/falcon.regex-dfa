@@ -21,7 +21,12 @@ int main(int, char ** av) {
       std::cout << "\033[0m\n", 
       std::cin
     ) {
-      re::print_automaton(re::scan(s.c_str()));
+      try {
+        re::print_automaton(re::scan(s.c_str()));
+      }
+      catch (std::exception const & e) {
+        std::cerr << e.what() << "\n";
+      }
     }
   }
   return 0;

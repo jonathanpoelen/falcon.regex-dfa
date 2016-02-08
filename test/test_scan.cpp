@@ -5,18 +5,16 @@
 #include <algorithm>
 // #include <cassert>
 
-unsigned g_count = 0;
-
-int test_failed = 0;
+unsigned count_test_failure = 0;
 
 namespace re = falcon::regex_dfa;
 
 void test(
   char const * pattern
-, re::Ranges const & rngs1
 , re::Ranges const & rngs2
 , unsigned line
 ) {
+  re::Ranges const & rngs1 = re::scan(pattern);
   if (![&]{
     if (rngs1.size() != rngs2.size()) {
       std::cerr << "# different size\n";
@@ -36,7 +34,7 @@ void test(
     return true;
   }()) {
     std::cerr
-      << ++g_count << "  line: " << line
+      << ++count_test_failure << "  line: " << line
       << "\npattern: \033[37;02m" << pattern
       << "\033[0m\n"
     ;
@@ -48,13 +46,12 @@ void test(
       << "\033[0m\n"
     ;
     std::cerr << "----------\n";
-    ++test_failed;
     //assert(false);
     //throw 1;
   }
 }
 
-#define TEST(pattern, value) test(pattern, re::scan(pattern), value, __LINE__)
+#define TEST(pattern, value) test(pattern, value, __LINE__)
 
 using re::Range;
 using re::Ranges;
@@ -144,7 +141,7 @@ int main()
   TEST("a{3}", rs(r(a1), r(a2), r(a3), rf));
   TEST("a{,1}", rs(r(F, a1), rf));
   TEST("a{,2}", rs(r(F, a1a2), r(F, a2), rf));
-  TEST("a{,3}", rs(r(F, a1a2a3), r(F, a2a3), r(F, a3), rf));   
+  TEST("a{,3}", rs(r(F, a1a2a3), r(F, a2a3), r(F, a3), rf));
   TEST("a{1,}", rs(r(a1), r(F, a1)));
   TEST("a{2,}", rs(r(a1), r(a2), r(F, a2)));
   TEST("a{3,}", rs(r(a1), r(a2), r(a3), r(F, a3)));
@@ -180,7 +177,7 @@ int main()
   TEST("a?b", rs(r(a1b2), r(b2), rf));
   TEST("a+b", rs(r(a1), r(a1b2), rf));
   TEST("a*b", rs(r(a1b2), r(a1b2), rf));
-  
+
   auto const tb3 = t('b', 3);
   auto const tb4 = t('b', 4);
   auto const a1a2a3b4 = ts{ta1, ta2, ta3, tb4};
@@ -196,7 +193,7 @@ int main()
   TEST("a{3}b", rs(r(a1), r(a2), r(a3), r(b4), rf));
   TEST("a{,1}b", rs(r(a1b2), r(b2), rf));
   TEST("a{,2}b", rs(r(a1a2b3), r(a2b3), r(b3), rf));
-  TEST("a{,3}b", rs(r(a1a2a3b4), r(a2a3b4), r(a3b4), r(b4), rf));   
+  TEST("a{,3}b", rs(r(a1a2a3b4), r(a2a3b4), r(a3b4), r(b4), rf));
   TEST("a{1,}b", rs(r(a1), r(a1b2), rf));
   TEST("a{2,}b", rs(r(a1), r(a2), r(a2b3), rf));
   TEST("a{3,}b", rs(r(a1), r(a2), r(a3), r(a3b4), rf));
@@ -355,7 +352,7 @@ int main()
   auto const b6 = ts{tb6};
   auto const b6c7 = ts{tb6, tc7};
   auto const c7 = ts{tc7};
-  
+
   TEST("(?!ab){3}c", rs(r(a1), r(b2), r(a3), r(b4), r(a5), r(b6), r(c7), rf));
   TEST("(?!ab?){3}c", rs(r(a1), r(b2a3), r(a3), r(b4a5), r(a5), r(b6c7), r(c7), rf));
   TEST("(?!ab+){3}c", rs(r(a1), r(b2), r(b2a3), r(b4), r(b4a5), r(b6), r(b6c7), rf));
@@ -422,12 +419,12 @@ int main()
   TEST("(?!a*b?){,3}c", rs(r(a1b2a3b4a5b6c7), r(a1b2a3b4a5b6c7), r(a3b4a5b6c7), r(a3b4a5b6c7), r(a5b6c7), r(a5b6c7), r(c7), rf));
   TEST("(?!a?b+){,3}c", rs(r(a1b2a3b4a5b6c7), r(b2), r(b2a3b4a5b6c7), r(b4), r(b4a5b6c7), r(b6), r(b6c7), rf));
   TEST("(?!a?b*){,3}c", rs(r(a1b2a3b4a5b6c7), r(b2a3b4a5b6c7), r(b2a3b4a5b6c7), r(b4a5b6c7), r(b4a5b6c7), r(b6c7), r(b6c7), rf));
-  
+
   auto const a1b2a1b2c3 = ts{ta1, tb2, ta1, tb2, tc3};
   auto const a1b2a1c3 = ts{ta1, tb2, ta1, tc3};
   auto const b2a1b2c3 = ts{tb2, ta1, tb2, tc3};
   auto const b2a1c3 = ts{tb2, ta1, tc3};
-  
+
   TEST("(?!ab){1,}c", rs(r(a1), r(b2), r(a1c3), rf));
   TEST("(?!ab?){1,}c", rs(r(a1), r(b2a1c3), r(a1c3), rf));
   TEST("(?!ab+){1,}c", rs(r(a1), r(b2), r(b2a1c3), rf));
@@ -497,7 +494,7 @@ int main()
   TEST("(?!a?b*){1,1}c", rs(r(a1b2c3), r(b2c3), r(b2c3), rf));
 
   auto const a1b2a3c5 = ts{ta1, tb2, ta3, tc5};
-  
+
   TEST("(?!ab){1,2}c", rs(r(a1), r(b2), r(a3c5), r(b4), r(c5), rf));
   TEST("(?!ab?){1,2}c", rs(r(a1), r(b2a3c5), r(a3c5), r(b4c5), r(c5), rf));
   TEST("(?!ab+){1,2}c", rs(r(a1), r(b2), r(b2a3c5), r(b4), r(b4c5), rf));
@@ -516,7 +513,7 @@ int main()
   auto const a3c7 = ts{ta3, tc7};
   auto const b2a3b4c7 = ts{tb2, ta3, tb4, tc7};
   auto const b2a3c7 = ts{tb2, ta3, tc7};
-  
+
   TEST("(?!ab){1,3}c", rs(r(a1), r(b2), r(a3c7), r(b4), r(a5c7), r(b6), r(c7), rf));
   TEST("(?!ab?){1,3}c", rs(r(a1), r(b2a3c7), r(a3c7), r(b4a5c7), r(a5c7), r(b6c7), r(c7), rf));
   TEST("(?!ab+){1,3}c", rs(r(a1), r(b2), r(b2a3c7), r(b4), r(b4a5c7), r(b6), r(b6c7), rf));
@@ -529,7 +526,7 @@ int main()
   TEST("(?!a*b?){1,3}c", rs(r(a1b2a3b4a5b6c7), r(a1b2a3b4a5b6c7), r(a3b4a5b6c7), r(a3b4a5b6c7), r(a5b6c7), r(a5b6c7), r(c7), rf));
   TEST("(?!a?b+){1,3}c", rs(r(a1b2), r(b2), r(b2a3b4c7), r(b4), r(b4a5b6c7), r(b6), r(b6c7), rf));
   TEST("(?!a?b*){1,3}c", rs(r(a1b2a3b4a5b6c7), r(b2a3b4a5b6c7), r(b2a3b4a5b6c7), r(b4a5b6c7), r(b4a5b6c7), r(b6c7), r(b6c7), rf));
-  
+
   TEST("(?!ab){2,2}c", rs(r(a1), r(b2), r(a3), r(b4), r(c5), rf));
   TEST("(?!ab?){2,2}c", rs(r(a1), r(b2a3), r(a3), r(b4c5), r(c5), rf));
   TEST("(?!ab+){2,2}c", rs(r(a1), r(b2), r(b2a3), r(b4), r(b4c5), rf));
@@ -609,7 +606,7 @@ int main()
   TEST("(?!a?b*)*c", rs(r(a1b2a1b2c3), r(b2a1b2c3), r(b2a1b2c3), rf));
 
   auto const a1a1b2 = ts{ta1, ta1, tb2};
-  
+
   TEST("a?(?!b)c", rs(r(a1b2), r(b2), r(c3), rf));
   TEST("a+(?!b)c", rs(r(a1), r(a1b2), r(c3), rf));
   TEST("a*(?!b)c", rs(r(a1a1b2), r(a1b2), r(c3), rf));
@@ -634,6 +631,10 @@ int main()
   TEST("(?!a|b){,1}(?!c?|d){,1}e", rs(r(a2b2c4d4e5), r(b2), r(c4d4e5), r(d4), r(e5), rf));
   TEST("(?!a?|b){,1}(?!cd){,1}e", rs(r(a2b2c3e5), r(b2), r(c3e5), r(d4), r(e5), rf));
   TEST("(?!a?|b?){,1}(?!cd){,1}e", rs(r(a2b2c3e5), r(b2c3e5), r(c3e5), r(d4), r(e5), rf));
+
+  auto const a2b2 = ts{ta2, tb2};
+
+  TEST("a|b", rs(r(a2b2), r(b2), rf));
 
   auto const td5 = t('d', 5);
   auto const td6 = t('d', 6);
@@ -663,8 +664,8 @@ int main()
   TEST("(?!|a)b", rs(r(a1b2), r(b2), rf));
   TEST("(?!a||b)c", rs(r(a2b2b2c3), r(b2), r(c3), rf));
 
-  if (test_failed) {
-    std::cerr << "error(s): " << test_failed << "\n";
+  if (count_test_failure) {
+    std::cerr << "error(s): " << count_test_failure << "\n";
   }
-  return test_failed ? 1 : 0;
+  return count_test_failure ? 1 : 0;
 }
