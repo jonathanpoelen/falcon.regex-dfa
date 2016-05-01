@@ -3,10 +3,10 @@
 
 #include <algorithm>
 
-void falcon::regex_dfa::reverse_transitions(Transitions& ts, unsigned n)
+void falcon::regex_dfa::reverse_transitions(Transitions& ts, unsigned n, Transition::State state)
 {
   if (ts.empty()) {
-    ts.push_back({{char_int{}, ~char_int{}}, n});
+    ts.push_back({{char_int{}, ~char_int{}}, n, state});
     return;
   }
 
@@ -47,7 +47,7 @@ void falcon::regex_dfa::reverse_transitions(Transitions& ts, unsigned n)
       first->e.r = c2-1;
     }
     if (c1 != ~char_int{}) {
-      ts.push_back({{++c1, ~char_int{}}, n});
+      ts.push_back({{++c1, ~char_int{}}, n, state});
     }
   }
   else {

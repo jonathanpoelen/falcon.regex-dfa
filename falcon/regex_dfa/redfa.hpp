@@ -35,16 +35,52 @@ struct Transition
 {
   Event e;
   std::size_t next;
+  enum State {
+    None,
+    Normal   = 1 << 0,
+    Bol      = 1 << 1,
+    Invalid  = 1 << 2,
+    MAX      = 1 << 3,
+  } states;
 
   bool operator < (Transition const & other) const {
-    return e < other.e || (e == other.e && next < other.next);
+    return e < other.e || (
+      e == other.e && (
+        next < other.next || (
+          next == other.next && states < other.states
+        )
+      )
+    );
   }
 
   bool operator == (Transition const & other) const {
     return next == other.next
-        && e == other.e;
+        && e == other.e
+        && states == other.states;
   }
 };
+
+constexpr Transition::State operator | (Transition::State a, Transition::State b) {
+  return static_cast<Transition::State>(int(a) | b);
+}
+
+inline Transition::State & operator |= (Transition::State & a, Transition::State b) {
+  a = static_cast<Transition::State>(a | b);
+  return a;
+}
+
+constexpr Transition::State operator & (Transition::State a, Transition::State b) {
+  return static_cast<Transition::State>(int(a) & b);
+}
+
+inline Transition::State & operator &= (Transition::State & a, Transition::State b) {
+  a = static_cast<Transition::State>(a & b);
+  return a;
+}
+
+constexpr Transition::State operator ~ (Transition::State a) {
+  return static_cast<Transition::State>(~int(a) & (Transition::MAX - 1));
+}
 
 struct Transitions : std::vector<Transition> {
   using std::vector<Transition>::vector;
@@ -102,8 +138,8 @@ struct Range {
     None = 0,
     Normal = 1 << 0,
     Final = 1 << 1,
-    Begin = 1 << 2,
-    End = 1 << 3,
+    Bol = 1 << 2,
+    Eol = 1 << 3,
     Invalid = 1 << 4,
     INC_LAST_FLAG
   };

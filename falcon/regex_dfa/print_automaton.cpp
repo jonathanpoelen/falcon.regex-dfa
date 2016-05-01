@@ -9,12 +9,12 @@
 
 namespace {
   constexpr char const * colors[]{
-    "\033[31;02m",
-    "\033[32;02m",
-    "\033[33;02m",
-    "\033[34;02m",
-    "\033[35;02m",
-    "\033[36;02m",
+    "\033[31;2m",
+    "\033[32;2m",
+    "\033[33;2m",
+    "\033[34;2m",
+    "\033[35;2m",
+    "\033[36;2m",
   };
   constexpr std::size_t nb_colors = sizeof(colors)/sizeof(colors[0]);
   constexpr char const * reset_color = "\033[0m";
@@ -38,10 +38,18 @@ namespace falcon { namespace regex_dfa {
 
 std::ostream & operator<<(std::ostream & os, Transition const & t)
 {
-  return os
+  os
     << colors[1]
     << "[" << t.e.l << "-" << t.e.r << "]"
        " ['" << char(t.e.l) << "'-'" << char(t.e.r) << "']"
+  ;
+  if (t.states) {
+    os << colors[4]
+      << (t.states & Transition::Bol    ? " ^" : "  ")
+      << (t.states & Transition::Normal ? " =" : "  ")
+    ;
+  }
+  return os
     << reset_color
     << " → " << t.next
   ;
@@ -55,15 +63,14 @@ std::ostream & operator<<(std::ostream & os, Transitions const & ts)
   return os << "\n";
 }
 
-std::ostream & operator<<(std::ostream & os, Range::State const & states) 
+std::ostream & operator<<(std::ostream & os, Range::State const & states)
 {
   return os
-    << (states & Range::Final ? " @" : "  ")
-    << (states & Range::Begin ? " ^" : "  ")
-    << (states & Range::End ? " $" : "  ")
-    << (states & Range::Normal ? " =" : "  ")
+    << (states & Range::Final   ? " @" : "  ")
+    << (states & Range::Bol     ? " ^" : "  ")
+    << (states & Range::Eol     ? " $" : "  ")
+    << (states & Range::Normal  ? " =" : "  ")
     << (states & Range::Invalid ? " x" : "  ")
-    //<< (rng.states & Range::Epsilon ? "E " : "  ")
   ;
 }
 
@@ -101,7 +108,7 @@ void print_automaton(const Range& rng, int num)
   std::cout << "\n" << rng.transitions;
 }
 
-void print_table(std::vector<unsigned> const & capture_table) 
+void print_table(std::vector<unsigned> const & capture_table)
 {
   for (auto & caps : capture_table) {
     constexpr char c[]{'(',')'};
@@ -114,7 +121,7 @@ void print_table(std::vector<unsigned> const & capture_table)
 //   for (auto & rng : rngs) {
 //     print_automaton(rng, int(&rng-&rngs[0]));
 //   }
-// 
+//
 //   for (auto & caps : rngs.capture_table) {
 //     constexpr char c[]{'(',')'};
 //     std::cout << caps << " " << c[rngs.capture_table[caps] > caps] << "\n";
@@ -137,10 +144,10 @@ void print_automaton(const Ranges& rngs)
   for (auto & rng : rngs) {
     sz += rng.transitions.size();
   }
-  
+
   struct L { std::size_t n; enum { None, Start, Plug, Stop, Cont } e; };
   using Graph = std::vector<std::vector<L>>;
-  
+
   auto process_graph = [sz, &rngs](Graph & graph, auto is_next_op2, auto distance_next, auto a){
     auto egraph = end(graph);
     auto add_column = [sz, &graph, &egraph, a](){
@@ -149,7 +156,7 @@ void print_automaton(const Ranges& rngs)
       egraph = end(graph);
       return egraph-1;
     };
-    
+
     unsigned i = 1;
     unsigned rng_num = 0;
     auto first_rng = a.begin(rngs);
@@ -191,35 +198,35 @@ void print_automaton(const Ranges& rngs)
       i += 2;
     }
   };
-  
+
   Graph graph;
   process_graph(
-    graph, 
-    std::greater_equal<>{}, 
+    graph,
+    std::greater_equal<>{},
     [&rngs](auto it_rng, auto it_trs){
       return std::accumulate(
-        it_rng+1, 
-        begin(rngs) + it_trs->next, 
-        end(it_rng->transitions) - it_trs + 1u, 
+        it_rng+1,
+        begin(rngs) + it_trs->next,
+        end(it_rng->transitions) - it_trs + 1u,
         [](auto n, auto & rng) { return n + rng.transitions.size() + 2; }
       );
-    }, 
+    },
     Begin()
   );
   Graph graph2;
   process_graph(
-    graph2, 
-    [&rngs](unsigned rev_rng_num, auto next) { 
-      return rngs.size() - rev_rng_num <= next; 
-    }, 
+    graph2,
+    [&rngs](unsigned rev_rng_num, auto next) {
+      return rngs.size() - rev_rng_num <= next;
+    },
     [&rngs](auto rit_rng, auto it_trs){
       return std::accumulate(
-        begin(rngs) + it_trs->next, 
-        rit_rng.base() - 1, 
-        rend(rit_rng->transitions) - it_trs, 
+        begin(rngs) + it_trs->next,
+        rit_rng.base() - 1,
+        rend(rit_rng->transitions) - it_trs,
         [](auto n, auto & rng) { return n + rng.transitions.size() + 2; }
       );
-    }, 
+    },
     RBegin()
   );
 
@@ -236,11 +243,11 @@ void print_automaton(const Ranges& rngs)
       auto first = rbegin(graph);
       auto last = rend(graph);
       std::cout << " ";
-      
+
       for (; first != last; ++first) {
         auto const e = (*first)[igraph].e;
         if (e) {
-          std::cout << colors[i % nb_colors];        
+          std::cout << colors[i % nb_colors];
         }
         std::cout << borders[e];
         if (L::Start <= e && L::Stop >= e) {
@@ -251,7 +258,7 @@ void print_automaton(const Ranges& rngs)
         }
         --i;
       }
-      
+
       for (; first != last; ++first) {
         --i;
         auto const e = (*first)[igraph].e;
@@ -259,7 +266,7 @@ void print_automaton(const Ranges& rngs)
           std::cout << colors[i % nb_colors] << "│" << colors[pluged_color] << "─";
         }
         else {
-          std::cout << colors[pluged_color] << "──";        
+          std::cout << colors[pluged_color] << "──";
         }
       }
 
@@ -270,13 +277,13 @@ void print_automaton(const Ranges& rngs)
         std::cout << (is_stop ? "▸" : "─");
       }
     };
-    
+
     if (!graph2.empty()) {
       print_graph(graph2, true, sz - igraph - 1);
-      std::cout << reset_color << "┆";      
+      std::cout << reset_color << "┆";
     }
     print_graph(graph, false, igraph);
-    
+
     ++igraph;
   };
 

@@ -6,7 +6,7 @@
 #include <algorithm>
 
 void falcon::regex_dfa::scan_intervals(
-  utf8_consumer& consumer, Transitions& ts, unsigned int next_ts
+  utf8_consumer& consumer, Transitions& ts, unsigned int next_ts, Transition::State state
 ) {
   char_int c = consumer.bumpc();
   bool const reverse = [&]() -> bool {
@@ -18,7 +18,7 @@ void falcon::regex_dfa::scan_intervals(
   }();
 
   if (c == '-') {
-    ts.push_back({{c, c}, next_ts});
+    ts.push_back({{c, c}, next_ts, state});
     c = consumer.bumpc();
   }
 
@@ -29,12 +29,12 @@ void falcon::regex_dfa::scan_intervals(
       }
 
       if (c == ']') {
-        ts.push_back({{'-', '-'}, next_ts});
+        ts.push_back({{'-', '-'}, next_ts, state});
       }
       else {
         Event & e = ts.back().e;
         if (e.l != e.r) {
-          ts.push_back({{'-', '-'}, next_ts});
+          ts.push_back({{'-', '-'}, next_ts, state});
         }
         else if (!(
             (('0' <= e.l && e.l <= '9' && '0' <= c && c <= '9')
@@ -57,7 +57,7 @@ void falcon::regex_dfa::scan_intervals(
         }
       }
 
-      ts.push_back({{c, c}, next_ts});
+      ts.push_back({{c, c}, next_ts, state});
       c = consumer.bumpc();
     }
   }
@@ -71,6 +71,6 @@ void falcon::regex_dfa::scan_intervals(
   }
 
   if (reverse) {
-    reverse_transitions(ts, next_ts);
+    reverse_transitions(ts, next_ts, state);
   }
 }

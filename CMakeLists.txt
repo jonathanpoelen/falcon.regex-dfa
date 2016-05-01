@@ -20,6 +20,7 @@ if (DEFINED RE_TRACE)
   add_definitions(-DFALCON_REGEX_DFA_ENABLE_TRACE)
 endif()
 
+include_directories(include/)
 
 # aux_source_directory(. SRC_LIST)
 # file(GLOB headers_SRC "*.hpp")
@@ -33,7 +34,7 @@ set(
   ${SRC}/print_automaton.hpp
 )
 add_library(lib_print ${SRC_RE_PRINT})
-link_libraries(lib_print)
+# link_libraries(lib_print)
 
 set(
   SRC_RE_SCAN
@@ -45,7 +46,13 @@ set(
   ${SRC}/scan_intervals.hpp
 )
 add_library(lib_scan ${SRC_RE_SCAN})
-link_libraries(lib_scan)
+
+# set(
+#   SRC_RE_SCAN2
+#   ${SRC}/scan2.cpp
+#   ${SRC}/scan.hpp
+# )
+# add_library(lib_scan2 ${SRC_RE_SCAN2})
 
 set(
   SRC_RE_MATCH
@@ -54,12 +61,23 @@ set(
 )
 add_library(lib_match ${SRC_RE_MATCH})
 
+set(
+  SRC_RE_REDUCE
+  ${SRC}/reduce_rng.cpp
+  ${SRC}/reduce_rng.hpp
+)
+add_library(lib_reduce ${SRC_RE_REDUCE})
+
 # source_group(libs FILES ${SRC_SCAN})
 
 
 # Utilities
 add_executable(re_match utils/match.cpp)
 add_executable(re_scan utils/scan.cpp)
+# add_executable(re_scan2 utils/scan2.cpp)
+# add_executable(re_scan_reduce utils/scan_reduce.cpp)
+
+# target_link_libraries(re_scan2 lib_scan2)
 
 
 # Tests
@@ -81,4 +99,10 @@ function(link_library lib)
   endforeach()
 endfunction()
 
-link_library(lib_match re_match test_match)
+
+set(EXE_SCAN re_scan test_scan)
+set(EXE_MATCH re_match test_match)
+
+link_library(lib_match ${EXE_MATCH})
+link_library(lib_scan ${EXE_SCAN} ${EXE_MATCH})
+link_library(lib_print ${EXE_SCAN} ${EXE_MATCH})

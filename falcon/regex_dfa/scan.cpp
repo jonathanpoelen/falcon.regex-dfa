@@ -1,15 +1,16 @@
 #include "scan.hpp"
 #include "scan_intervals.hpp"
 #include "range_iterator.hpp"
+#include "trace.hpp"
 
 #include <stdexcept>
 #include <algorithm>
+#include <iostream>
 
 #include <cassert>
-// #include <iostream>
-// #include "print_automaton.hpp"
 
-namespace falcon { 
+
+namespace falcon {
 namespace regex_dfa {
 namespace {
 
@@ -19,7 +20,8 @@ using size_t = unsigned;
 struct Stack {
   std::vector<index_type> iends;
   std::vector<index_type> irngs;
-  falcon::regex_dfa::Range::State states;
+  Range::State states;
+  Transition::State tr_states;
   index_type ipipe;
   size_t count_pipe;
 };
@@ -135,38 +137,40 @@ struct basic_scanner
   std::vector<Stack> stack;
   std::vector<Pipe> pipe_stack;
   CapStack cap_stack;
- 
+
   Ranges rngs;
   std::vector<index_type> irngs;
   std::vector<index_type> iends;
   index_type ipipe;
 
   Range::State states;
-  
+  Transition::State tr_states;
+
   Transitions ts;
 
   /// @{
-  /// garbage 
+  /// garbage
   Captures tmp_capstates;
   std::vector<Range> new_rng;
   decltype(irngs) cp_irngs;
   decltype(cp_irngs) tmp_irng;
   /// @}
-  
+
   utf8_consumer consumer {nullptr};
   char_int c;
-  
+
   void prepare() {
     stack.reserve(8);
     rngs.reserve(8);
     irngs.reserve(8);
-    stack.push_back({{}, {}, Range::Normal, 0, 0});
+    stack.push_back({{}, {}, Range::Normal, Transition::Normal, 0, 0});
     rngs.push_back({Range::Normal, {}, {}});
     irngs.push_back(0);
     ipipe = 0;
     states = Range::Normal;
+    tr_states = Transition::Normal;
   }
-  
+
   void scan(const char * s)
   {
     consumer = utf8_consumer{s};
@@ -200,14 +204,14 @@ struct basic_scanner
       }
     }
   }
-  
-  Ranges final() 
+
+  Ranges final()
   {
     if (stack.size() > 1) {
       throw std::runtime_error("unmatched )");
     }
 
-    if (group_close() && !(rngs[0].states & Range::End)) {
+    if (group_close() && !(rngs[0].states & Range::Eol)) {
       rngs[0].states |= Range::Final;
       rngs[0].states &= ~Range::Normal;
     }
@@ -216,30 +220,44 @@ struct basic_scanner
 
     auto re_states = [this](auto & iarr){
       for (auto i : iarr) {
-        if (!(rngs[i].states & Range::End)) {
+        FALCON_REGEX_DFA_TRACE(std::cerr
+          << "  rngs[" << i << "].states & End = "
+          << (rngs[i].states & Range::Eol) << "\n"
+        );
+        if (!(rngs[i].states & Range::Eol)) {
           rngs[i].states |= Range::Final | states;
           rngs[i].states &= ~Range::Normal;
         }
       }
     };
 
+    FALCON_REGEX_DFA_TRACE_RNG(iends);
     re_states(iends);
+    FALCON_REGEX_DFA_TRACE_RNG(irngs);
     re_states(irngs);
+
+    for (Range & rng : rngs) {
+      auto bol_nor = Range::Bol | Range::Normal;
+      if ((rng.states & bol_nor) == bol_nor) {
+        rng.states &= ~Range::Bol;
+      }
+    }
 
     rngs.capture_table = std::move(cap_stack.capture_table);
     return std::move(rngs);
   }
-  
+
   /// \return  true if count_rngs()-1 in ipipes, otherwhise false
-  bool group_close() 
+  bool group_close()
   {
+    FALCON_REGEX_DFA_TRACE_FUNC();
     //if (ipipe == stack.back().ipipe) {
     //  return true;
     //}
     unsigned new_i = count_rngs()-1u;
-    bool has_ipipe = ipipe == new_i;
+    bool has_ipipe = ipipe == irngs[0];
     ipipe = stack.back().ipipe;
-    
+
     unsigned const count_pipe = unsigned(pipe_stack.size() - stack.back().count_pipe);
     assert(count_pipe <= pipe_stack.size());
     auto first = pipe_stack.end() - count_pipe;
@@ -247,16 +265,21 @@ struct basic_scanner
     auto p = iends.begin();
     auto cp = p;
     auto cur_ipipe = ipipe;
-    
+
     for (; first != last; ++first) {
       auto old = first->ipipe;
 
       assert(first->irngs_size <= iends.size() - (iends.begin() - p));
       assert(first->irngs_size);
       auto e = p + first->irngs_size;
-      has_ipipe = has_ipipe || p[0] == cur_ipipe;
+      FALCON_REGEX_DFA_TRACE(std::cerr
+        << "p[0]: " << p[0] << "  cur_ipipe: " << cur_ipipe << "  old: " << old << "\n"
+      );
+      has_ipipe |= p[0] == cur_ipipe;
       if (!first->is_empty) {
+        FALCON_REGEX_DFA_TRACE_RNG(make_range(p, e));
         auto last = e[-1] == old ? e-1 : e;
+        FALCON_REGEX_DFA_TRACE_RNG(make_range(p, last));
         if (p == cp) {
           cp = last;
         }
@@ -265,7 +288,7 @@ struct basic_scanner
         }
         p = e;
       }
-      
+
       auto i = cur_ipipe;
       auto ie = i + first->irngs_size;
       assert(ie <= rngs.size());
@@ -278,30 +301,34 @@ struct basic_scanner
       }
       cur_ipipe = old;
     }
-    
+
     iends.erase(cp, iends.end());
-  
+    FALCON_REGEX_DFA_TRACE_RNG(iends);
+
     first = pipe_stack.end() - count_pipe;
     Transitions & ts_dest = rngs[ipipe].transitions;
+    Range::State & rng_state = rngs[ipipe].states;
     for (; first != last; ++first) {
       if (ipipe != first->ipipe) {
-        Transitions & ts_src = rngs[first->ipipe].transitions;
+        auto & rng = rngs[first->ipipe];
+        Transitions & ts_src = rng.transitions;
+        rng_state |= (rng.states & Range::Bol);
         ts_dest.insert(ts_dest.end(), ts_src.begin(), ts_src.end());
       }
     }
 
     return has_ipipe;
   }
-  
+
   void check_no_repetition() {
     switch (c) {
       case '?': case '+': case '*': case '{':
       throw std::runtime_error("syntaxe error ? + * {");
     }
   }
-  
+
   std::size_t cap_level() {
-    return stack.size() - 1u; 
+    return stack.size() - 1u;
   }
 
   template<class Bool>
@@ -315,14 +342,21 @@ struct basic_scanner
   }
 
   void set_transitions() {
+    FALCON_REGEX_DFA_TRACE_FUNC_RNG(irngs);
     for (auto && i : irngs) {
-      auto & rng_ts = rngs[i].transitions;
+      auto & rng = rngs[i];
+      auto & rng_ts = rng.transitions;
       rng_ts.insert(rng_ts.end(), ts.begin(), ts.end());
+      if (rng.states & Range::Bol) {
+        for (auto && t : make_range(rng_ts.end() - ts.size(), rng_ts.end())) {
+          t.states = Transition::Bol;
+        }
+      }
     }
   }
 
   unsigned count_rngs() {
-    return static_cast<unsigned>(rngs.size()); 
+    return static_cast<unsigned>(rngs.size());
   }
 
   void renext_transitions() {
@@ -337,12 +371,20 @@ struct basic_scanner
   void repeat_multi_dup(unsigned long m, unsigned long n, EState estate)
   {
     new_rng.assign(rngs.begin() + ipipe, rngs.end());
+    if (!(tr_states & Transition::Bol)) {
+      for (auto && r : new_rng) {
+        for (auto && t : r.transitions) {
+          t.states &= ~Transition::Bol;
+          t.states |= Transition::Normal;
+        }
+      }
+    }
     auto count_rng_added = unsigned(new_rng.size() - 1u);
 
     unsigned const skip_ipipe = irngs[0] == ipipe ? 1u : 0u;
 
     cp_irngs.clear();
-    if (estate == MultiDup::Conditional) {
+    if (estate == MultiDup::Conditional && m > 1) {
       if (!skip_ipipe) {
         cp_irngs.push_back(ipipe);
       }
@@ -356,7 +398,7 @@ struct basic_scanner
         }
       };
     };
-    
+
     std::vector<unsigned> extended_irng;
     if (skip_ipipe) {
       for (auto & t : rngs[0].transitions) {
@@ -365,7 +407,7 @@ struct basic_scanner
         }
       }
     }
-    
+
     auto insert_transitions = [&](Transitions const & transitions_added){
       for (auto & i : irngs) {
         Range & r = rngs[i];
@@ -388,7 +430,7 @@ struct basic_scanner
       }
       set_union(irngs, extended_irng, tmp_irng);
     };
-    
+
     while (--m) {
       if (estate == MultiDup::Conditional) {
         set_union(irngs, cp_irngs, tmp_irng);
@@ -399,7 +441,7 @@ struct basic_scanner
     if (estate == MultiDup::RepeatAndMore) {
       ts = new_rng[0].transitions;
     }
-    
+
     auto insert_states = [&](){
       for (auto & i : irngs) {
         Range & r = rngs[i];
@@ -419,7 +461,7 @@ struct basic_scanner
     }
 
     cp_irngs.assign(irngs.begin() + skip_ipipe, irngs.end());
-    
+
     while (n--) {
       range_t r{irngs.begin() + skip_ipipe, irngs.end()};
       set_union(cp_irngs, r, tmp_irng);
@@ -431,11 +473,14 @@ struct basic_scanner
 
   void scan_bracket() {
     ts.clear();
-    scan_intervals(consumer, ts, count_rngs());
+    scan_intervals(consumer, ts, count_rngs(), tr_states);
+    tr_states = Transition::Normal;
     c = consumer.bumpc();
   }
-  
+
   void scan_or() {
+    FALCON_REGEX_DFA_TRACE_FUNC();
+    FALCON_REGEX_DFA_TRACE_VAR(ipipe);
     bool const is_empty = (count_rngs()-1 == ipipe);
     ipipe = count_rngs()-1;
     if (!rngs[ipipe].transitions.empty()) {
@@ -447,7 +492,7 @@ struct basic_scanner
     }
     if (is_empty && !iends.empty() && iends.back() == irngs.front()) {
       pipe_stack.back().is_empty = true;
-      pipe_stack.push_back({ipipe, unsigned(irngs.size()), unsigned(irngs.size())});
+      pipe_stack.push_back({ipipe, unsigned(irngs.size()), true});
     }
     else {
       pipe_stack.push_back({ipipe, unsigned(irngs.size()), false});
@@ -462,6 +507,7 @@ struct basic_scanner
     irngs.push_back(ipipe);
     c = consumer.bumpc();
     states = stack.back().states;
+    tr_states = stack.back().tr_states;
     cap_stack.alternation();
   }
 
@@ -529,7 +575,7 @@ struct basic_scanner
         check
       );
     };
-    
+
     bool merge_irng = false;
 
     // {,n}
@@ -607,6 +653,7 @@ struct basic_scanner
       std::move(iends),
       std::move(irngs),
       states,
+      tr_states,
       ipipe,
       unsigned(pipe_stack.size())
     });
@@ -616,48 +663,50 @@ struct basic_scanner
   }
 
   void scan_close() {
+    FALCON_REGEX_DFA_TRACE_FUNC();
     if (!cap_level()) {
       throw std::runtime_error("unmatched )");
     }
-    
+
     bool const has_ipipe = group_close();
     pipe_stack.resize(stack.back().count_pipe);
     if (!iends.empty()) {
       iends.insert(iends.end(), irngs.begin(), irngs.end());
       swap(iends, irngs);
     }
-    
+
     auto copy_first = [this]{
-      auto & irngs_prev = stack.back().irngs;
-      auto & src_rng = rngs[ipipe].transitions;
-      for (auto & i : irngs_prev) {
+      auto const & irngs_prev = stack.back().irngs;
+      auto const & src_rng = rngs[ipipe].transitions;
+      for (auto && i : irngs_prev) {
         if (&rngs[i].transitions != &src_rng) {
           rngs[i].transitions.insert(rngs[i].transitions.end(), src_rng.begin(), src_rng.end());
         }
       }
     };
-    
+
     auto merge_group = [this]{
       auto & irngs_prev = stack.back().irngs;
-      auto const superimposed_idx = (irngs_prev.back() == irngs.front()) ? 1 : 0; 
+      auto const superimposed_idx = (irngs_prev.back() == irngs.front()) ? 1 : 0;
+      FALCON_REGEX_DFA_TRACE_VAR(superimposed_idx);
       irngs_prev.insert(irngs_prev.end(), irngs.begin() + superimposed_idx, irngs.end());
       irngs = std::move(irngs_prev);
     };
-    
+
     c = consumer.bumpc();
-    
+
     switch (c) {
       case '+': scan_multi_one_or_more(); copy_first(); if (has_ipipe) merge_group(); break;
       case '*': scan_multi_zero_or_more(); copy_first(); merge_group(); break;
       case '?': scan_multi_optional(); copy_first(); merge_group(); break;
       case '{': {
-        bool m = scan_multi_interval(); 
-        copy_first(); 
+        bool m = scan_multi_interval();
+        copy_first();
         if (m) {
-          merge_group(); 
+          merge_group();
         }
         else if (has_ipipe) {
-          merge_group(); 
+          merge_group();
         }
       }
       break;
@@ -667,6 +716,9 @@ struct basic_scanner
     ipipe = stack[stack.size()-2].ipipe;
     iends = stack.back().iends;
     stack.pop_back();
+
+    FALCON_REGEX_DFA_TRACE_RNG(irngs);
+    FALCON_REGEX_DFA_TRACE_RNG(iends);
 
     if (cap_stack.is_marked(cap_level())) {
       auto n = cap_stack.unmark(cap_level());
@@ -683,22 +735,43 @@ struct basic_scanner
   }
 
   void scan_begin() {
-    if (irngs.front() != 0) {
-      ts.clear();
-      for (auto & i : irngs) {
-        rngs[i].transitions.push_back({{char_int{}, ~char_int{}}, count_rngs()});
-        rngs[i].states |= Range::Invalid;
+    bool const is_beginning = [this]{
+      assert(!stack.empty());
+      if (stack.size() == 1) {
+        return !irngs.empty() || ipipe == irngs.front();
       }
-      irngs.clear();
-      new_range(std::false_type{});
+      auto irng_front = irngs.front();
+      if (ipipe != irng_front) {
+        return false;
+      }
+      using std::rbegin;
+      using std::rend;
+      auto rfirst_stack = rbegin(stack) + 1;
+      auto rlast_stack = rend(stack) - 1;
+      for (; rfirst_stack != rlast_stack; ++rfirst_stack) {
+        if (/*rfirst_stack->irngs.empty() || */pipe_stack[rfirst_stack->count_pipe].ipipe != irng_front) {
+          return false;
+        }
+        irng_front = rfirst_stack->irngs.front();
+      };
+
+      return true;
+    }();
+    auto rng_states = Range::Bol;
+    tr_states = Transition::Bol;
+    if (!is_beginning) {
+      tr_states = Transition::Invalid;
+      rng_states |= Range::Invalid;
     }
-    states |= Range::Begin;
+    for (auto && i : irngs) {
+      rngs[i].states |= rng_states;
+    }
     c = consumer.bumpc();
   }
 
   void scan_end() {
     for (auto i : irngs) {
-      rngs[i].states |= Range::End;
+      rngs[i].states |= Range::Eol;
       rngs[i].states &= ~Range::Normal;
     }
     c = consumer.bumpc();
@@ -720,8 +793,18 @@ struct basic_scanner
 
     ts.clear();
     auto const n = count_rngs();
-    ts.push_back({e, n});
+    ts.push_back({e, n, tr_states});
+    tr_states = Transition::Normal;
     c = consumer.bumpc();
+  }
+
+  void single_ts_repetition() {
+    rngs.back().transitions = ts;
+    for (auto & t : rngs.back().transitions) {
+      if (!(t.states &= ~Transition::Bol)) {
+        t.states = Transition::Normal;
+      }
+    }
   }
 
   void scan_single_one_or_more() {
@@ -729,27 +812,20 @@ struct basic_scanner
     irngs.clear();
     irngs.push_back(count_rngs());
     new_range(std::true_type{});
-    rngs.back().transitions = ts;
+    single_ts_repetition();
     c = consumer.bumpc();
   }
 
   void scan_single_zero_or_more() {
-    set_transitions();
-    irngs.push_back(count_rngs());
-    {
-      auto has_begin = Range::Begin & states;
-      new_range(std::false_type{});
-      states |= has_begin;
-    }
-    rngs.back().transitions = ts;
-    c = consumer.bumpc();
+    scan_single_optional();
+    single_ts_repetition();
   }
 
   void scan_single_optional() {
     set_transitions();
     irngs.push_back(count_rngs());
     {
-      auto has_begin = Range::Begin & states;
+      auto has_begin = Range::Bol & states;
       new_range(std::false_type{});
       states |= has_begin;
     }
@@ -774,7 +850,7 @@ struct basic_scanner
         new_range(std::false_type{});
       }
     };
-     
+
     auto repeat_conditional = [&](auto check) {
       unsigned long n = strtoul(start, &end, 10);
 
@@ -846,6 +922,7 @@ struct basic_scanner
 
 Ranges scan(const char * s)
 {
+  FALCON_REGEX_DFA_TRACE_FUNC();
   basic_scanner scanner;
   scanner.prepare();
   scanner.scan(s);

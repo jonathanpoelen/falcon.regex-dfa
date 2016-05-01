@@ -22,7 +22,7 @@ void test(
     }
     auto p1 = rngs1.begin();
     auto neq = [&p1](re::Range const & r) {
-      bool const ret = p1->states ? *p1 != r : bool(r.states);
+      bool const ret = r.states ? *p1 != r : false;
       ++p1;
       return ret;
     };
@@ -39,7 +39,7 @@ void test(
       << "\033[0m\n"
     ;
     re::print_automaton(rngs1);
-    std::cerr << "value:\n";
+    std::cerr << "expected:\n";
     re::print_automaton(rngs2);
     std::cerr
       << " pattern: \033[37;02m" << pattern
@@ -60,16 +60,20 @@ using re::Transition;
 using re::Transitions;
 using re::Event;
 
-Transition t(Event e, std::size_t n) {
-  return {e, n};
+Transition t(Event e, std::size_t n, Transition::State state = Transition::Normal) {
+  return {e, n, state};
 }
 
-Transition t(re::char_int c, std::size_t n) {
-  return {{c, c}, n};
+Transition t(re::char_int c, std::size_t n, Transition::State state = Transition::Normal) {
+  return {{c, c}, n, state};
 }
 
-Transition t(re::char_int c1, re::char_int c2, std::size_t n) {
-  return {{c1, c2}, n};
+Transition t(re::char_int c1, re::char_int c2, std::size_t n, Transition::State state = Transition::Normal) {
+  return {{c1, c2}, n, state};
+}
+
+Transition tB(Transition const & other, Transition::State state = {}) {
+  return {other.e, other.next, Transition::Bol | state};
 }
 
 Range r(State states) {
@@ -105,16 +109,15 @@ int main()
 {
   using ts = Transitions;
   Event const full {0, ~re::char_int{}};
-  Range rf{Range::Final, {}, {}};
   Range none{{}, {}, {}};
 
   auto const F = Range::Final;
-  auto const B = Range::Begin;
-  auto const E = Range::End;
-  auto const N = Range::Normal;
+  auto const B = Range::Bol;
+  auto const E = Range::Eol;
   auto const BF = B | F;
   auto const BE = B | E;
-  auto const BN = B | N;
+
+  auto const rf = r(F);
 
   auto const ta1 = t('a', 1);
   auto const a1 = ts{ta1};
@@ -152,20 +155,22 @@ int main()
   TEST("a{2,3}", rs(r(a1), r(a2), r(F, a3), rf));
   TEST("a{3,3}", rs(r(a1), r(a2), r(a3), rf));
 
-  TEST("^$", rs(r(E)));
-  TEST("^a?", rs(r(BF, a1), r(BF)));
-  TEST("^a+", rs(r(a1), r(BF, a1)));
-  TEST("^a*", rs(r(BF, a1), r(BF, a1)));
+  auto const a1B = ts{tB(ta1)};
+
+  TEST("^$", rs(r(BE)));
+  TEST("^a?", rs(r(BF, a1B), rf));
+  TEST("^a+", rs(r(a1B), r(F, a1)));
+  TEST("^a*", rs(r(BF, a1B), r(F, a1)));
 
   TEST("a$", rs(r(a1), r(E)));
   TEST("a?$", rs(r(E, a1), r(E)));
   TEST("a+$", rs(r(a1), r(E, a1)));
   TEST("a*$", rs(r(E, a1), r(E, a1)));
 
-  TEST("^a$", rs(r(a1), r(BE)));
-  TEST("^a?$", rs(r(E, a1), r(BE)));
-  TEST("^a+$", rs(r(a1), r(BE, a1)));
-  TEST("^a*$", rs(r(E, a1), r(BE, a1)));
+  TEST("^a$", rs(r(a1B), r(E)));
+  TEST("^a?$", rs(r(BE, a1B), r(E)));
+  TEST("^a+$", rs(r(a1B), r(E, a1)));
+  TEST("^a*$", rs(r(BE, a1B), r(E, a1)));
 
 
   auto const tb2 = t('b', 2);
@@ -204,20 +209,22 @@ int main()
   TEST("a{2,3}b", rs(r(a1), r(a2), r(a3b4), r(b4), rf));
   TEST("a{3,3}b", rs(r(a1), r(a2), r(a3), r(b4), rf));
 
-  TEST("^ab", rs(r(a1), r(BN, b2), rf));
-  TEST("^a?b", rs(r(a1b2), r(BN, b2), r(BF)));
-  TEST("^a+b", rs(r(a1), r(BN, a1b2), rf));
-  TEST("^a*b", rs(r(a1b2), r(BN, a1b2), r(BF)));
+  auto const a1Bb2B = ts{tB(ta1), tB(tb2)};
+
+  TEST("^ab", rs(r(a1B), r(b2), rf));
+  TEST("^a?b", rs(r(a1Bb2B), r(b2), rf));
+  TEST("^a+b", rs(r(a1B), r(a1b2), rf));
+  TEST("^a*b", rs(r(a1Bb2B), r(a1b2), rf));
 
   TEST("ab$", rs(r(a1), r(b2), r(E)));
   TEST("a?b$", rs(r(a1b2), r(b2), r(E)));
   TEST("a+b$", rs(r(a1), r(a1b2), r(E)));
   TEST("a*b$", rs(r(a1b2), r(a1b2), r(E)));
 
-  TEST("^ab$", rs(r(a1), r(BN, b2), r(E)));
-  TEST("^a?b$", rs(r(a1b2), r(BN, b2), r(BE)));
-  TEST("^a+b$", rs(r(a1), r(BN, a1b2), r(E)));
-  TEST("^a*b$", rs(r(a1b2), r(BN, a1b2), r(BE)));
+  TEST("^ab$", rs(r(a1B), r(b2), r(E)));
+  TEST("^a?b$", rs(r(a1Bb2B), r(b2), r(E)));
+  TEST("^a+b$", rs(r(a1B), r(a1b2), r(E)));
+  TEST("^a*b$", rs(r(a1Bb2B), r(a1b2), r(E)));
 
 
   TEST("a?b?", rs(r(F, a1b2), r(F, b2), rf));
@@ -232,6 +239,18 @@ int main()
   TEST("a+b*", rs(r(a1), r(F, a1b2), r(F, b2)));
   TEST("a*b*", rs(r(F, a1b2), r(F, a1b2), r(F, b2)));
 
+  auto const a1Ba1B = ts{tB(ta1), tB(ta1)};
+  auto const a1Ba1Bb2B = ts{tB(ta1), tB(ta1), tB(tb2)};
+  auto const a1a1 = ts{ta1, ta1};
+  auto const a1a1b2 = ts{ta1, ta1, tb2};
+  auto const a1a1b2Bb2B = ts{ta1, ta1, tB(tb2), tB(tb2)};
+  auto const a1b2Bb2B = ts{ta1, tB(tb2), tB(tb2)};
+  auto const b2b2 = ts{tb2, tb2};
+
+  TEST("^(?!ab){1,}", rs(r(a1B), r(b2), r(F, a1)));
+  TEST("^(?!a*){1,}", rs(r(BF, a1Ba1B), r(F, a1a1)));
+  TEST("^(?!a*){1,}b", rs(r(a1Ba1Bb2B), r(a1a1b2), rf));
+  TEST("a*^(?!b*){1,}", rs(r(a1a1b2Bb2B), r(a1b2Bb2B), r(F, b2b2)));
 
   auto const _ = t('-', 1);
   auto const a_b = t('a', 'b', 1);
@@ -261,7 +280,7 @@ int main()
   TEST("[a-bcd]", rs(r(ts{a_b, c, d}), rf));
   TEST("[a-bcd-]", rs(r(ts{a_b, c, d, _}), rf));
 
-  auto const _a = t(0, 'a'-1, 1);
+  auto const _a = t('\0', 'a'-1, 1);
   auto const a_ = t('a'+1, ~re::char_int{}, 1);
   auto const b_ = t('b'+1, ~re::char_int{}, 1);
   auto const c_ = t('c'+1, ~re::char_int{}, 1);
@@ -605,8 +624,6 @@ int main()
   TEST("(?!a?b+)*c", rs(r(a1b2c3), r(b2), r(b2a1b2c3), rf));
   TEST("(?!a?b*)*c", rs(r(a1b2a1b2c3), r(b2a1b2c3), r(b2a1b2c3), rf));
 
-  auto const a1a1b2 = ts{ta1, ta1, tb2};
-
   TEST("a?(?!b)c", rs(r(a1b2), r(b2), r(c3), rf));
   TEST("a+(?!b)c", rs(r(a1), r(a1b2), r(c3), rf));
   TEST("a*(?!b)c", rs(r(a1a1b2), r(a1b2), r(c3), rf));
@@ -634,7 +651,8 @@ int main()
 
   auto const a2b2 = ts{ta2, tb2};
 
-  TEST("a|b", rs(r(a2b2), r(b2), rf));
+  TEST("a|b", rs(r(a2b2), none, rf));
+  TEST("a|b?", rs(r(F, a2b2), none, rf));
 
   auto const td5 = t('d', 5);
   auto const td6 = t('d', 6);
@@ -663,6 +681,17 @@ int main()
   TEST("(?!a|)b", rs(r(a1b2), r(b2), rf));
   TEST("(?!|a)b", rs(r(a1b2), r(b2), rf));
   TEST("(?!a||b)c", rs(r(a2b2b2c3), r(b2), r(c3), rf));
+
+  auto const tc3B = tB(tc3);
+  auto const a2b2Bc3B = ts{ta2, tB(tb2), tc3B};
+  auto const b2Bc3B = ts{tB(tb2), tc3B};
+
+  TEST("(?!a|^b?)c", rs(r(a2b2Bc3B), r(b2Bc3B), r(c3), rf));
+
+  auto const a2Bb2B = ts{tB(ta2), tB(tb2)};
+  auto const b2B = ts{tB(tb2)};
+
+  TEST("^(?!a|b)", rs(r(a2Bb2B), none, rf));
 
   if (count_test_failure) {
     std::cerr << "error(s): " << count_test_failure << "\n";

@@ -33,18 +33,18 @@ void test(
 
 int main() {
 
-  YES("a", "aaaa");
   YES("a", "a");
-  YES("a", "ab");
-  YES("a", "abc");
+  NO("a", "ab");
+  NO("a", "abc");
+  NO("a", "aaaa");
   NO("a", "");
   NO("a", "b");
   NO("a", "ba");
 
-  YES("^a", "aaaa");
   YES("^a", "a");
-  YES("^a", "ab");
-  YES("^a", "abc");
+  NO("^a", "ab");
+  NO("^a", "abc");
+  NO("^a", "aaaa");
   NO("^a", "");
   NO("^a", "b");
   NO("^a", "ba");
@@ -83,8 +83,8 @@ int main() {
   NO("^a|^.?", "aaaa");
   NO("^a|^.?", "ba");
 
-  YES("a+", "aaaa");
   YES("a+", "a");
+  YES("a+", "aaaa");
   NO("a+", "ab");
   NO("a+", "abc");
   NO("a+", "baaa");
@@ -176,7 +176,7 @@ int main() {
   YES("(a)+", "a");
   YES("(a)+", "aa");
   YES("(a)+", "aaa");
-  YES("(a)+", "ab");
+  NO("(a)+", "ab");
   NO("(a)+", "");
   NO("(a)+", "b");
   NO("(a)+", "ba");
@@ -190,8 +190,8 @@ int main() {
 
   YES("(a)?", "");
   YES("(a)?", "a");
-  YES("(a)?", "aa");
-  YES("(a)?", "aaa");
+  NO("(a)?", "aa");
+  NO("(a)?", "aaa");
   NO("(a)?", "ba");
   NO("(a)?", "ab");
   NO("(a)?", "b");
