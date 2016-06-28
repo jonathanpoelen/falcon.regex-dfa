@@ -74,6 +74,7 @@ add_library(lib_reduce ${SRC_RE_REDUCE})
 # Utilities
 add_executable(re_match utils/match.cpp)
 add_executable(re_scan utils/scan.cpp)
+add_executable(new_scan utils/scan2.cpp ${SRC}/scan3.cpp)
 # add_executable(re_scan2 utils/scan2.cpp)
 # add_executable(re_scan_reduce utils/scan_reduce.cpp)
 
