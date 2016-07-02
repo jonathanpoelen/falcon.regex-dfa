@@ -10,22 +10,28 @@
 #include <cassert>
 #include <type_traits>
 
-#define SEQ_ENUM(m) \
-  m(start)          \
-  m(accu)           \
-  m(quanti)         \
-  m(backslash)      \
-  m(interval)       \
-  m(interval_Mm)    \
-  m(interval_N)     \
-  m(interval_Nn)    \
-  m(bol)            \
-  m(eol)            \
-  m(open_cap)       \
-  m(close_cap)      \
-  m(cap)            \
-  m(pipe)           \
+#define SEQ_ENUM(m)   \
+  m(start)            \
+  m(accu)             \
+  m(quanti)           \
+  m(quanti_bracket)   \
+  m(backslash)        \
+  m(interval)         \
+  m(interval_Mm)      \
+  m(interval_N)       \
+  m(interval_Nn)      \
+  m(bol)              \
+  m(eol)              \
+  m(is_bol)           \
+  m(cap_open)         \
+  m(cap_close)        \
+  m(pipe)             \
+  m(bracket_start)    \
+  m(bracket_start2)   \
+  m(bracket)          \
+  m(bracket_interval) \
   m(error)
+
 
 namespace falcon {
 namespace regex_dfa {
@@ -71,7 +77,16 @@ namespace {
     SEQ_ENUM(DEFINED_VALUE_EXPR)
 #undef DEFINED_VALUE_EXPR
 
-  constexpr Sc<accu + start + open_cap + pipe + bol + eol + quanti> bifurcation;
+  constexpr Sc<
+    accu
+  + start
+  + cap_open
+  + pipe
+  + bol
+  + eol
+  + quanti
+  + quanti_bracket
+  > bifurcation;
 }
 // template<S s> constexpr std::integral_constant<bool, !s> operator ! (Sc<s>) { return {}; }
 // constexpr std::true_type operator ! (std::false_type) { return {}; }
@@ -137,16 +152,25 @@ struct basic_scanner
       switch (U(e)) {
         CASE4(none, scan_single);
 
-        CASE3(backslash, scan_escaped);
+        CASE4(backslash, scan_escaped);
 
         CASE4(quanti, scan_quantifier);
+        CASE4(quanti_bracket, scan_quantifier);
 
-        CASE3(interval, scan_interval);
-        CASE3(interval | interval_Mm, scan_interval);
-        CASE3(interval | interval_Mm | interval_N, scan_interval);
-        CASE3(interval | interval_Mm | interval_N | interval_Nn, scan_interval);
-        CASE3(interval | interval_N, scan_interval);
-        CASE3(interval | interval_N | interval_Nn, scan_interval);
+        CASE4(interval, scan_interval);
+        CASE4(interval | interval_Mm, scan_interval);
+        CASE4(interval | interval_Mm | interval_N, scan_interval);
+        CASE4(interval | interval_Mm | interval_N | interval_Nn, scan_interval);
+        CASE4(interval | interval_N, scan_interval);
+        CASE4(interval | interval_N | interval_Nn, scan_interval);
+
+        CASE4(bracket_start, scan_bracket);
+        CASE4(bracket_start2, scan_bracket);
+        CASE4(bracket, scan_bracket);
+        CASE4(bracket_interval, scan_bracket);
+
+        CASE4(cap_close, scan_capture_open);
+        CASE4(cap_open, scan_capture_close);
 
         case U(error): throw parse_error("syntax error");
         default : throw parse_error("unimplemented [ " + to_string(e) + "]");
@@ -154,6 +178,7 @@ struct basic_scanner
     }
 #undef U
 #undef CASE3
+#undef CASE4
 #undef CASE
     if (bool(e & backslash)) {
       throw parse_error("error end of string");
@@ -169,19 +194,19 @@ struct basic_scanner
   {
     TT;
     switch (c) {
-      case '[': return scan_bracket(s);
-      case '|': return scan_or(s);
-      case '(': return scan_open(s);
-      case ')': return scan_close(s);
-      case '^': return scan_bol(s);
-      case '$': return scan_eol(s);
+      case '[': return s + bracket_start;
+      case '|': return s + pipe;
+      case '(': return s + cap_open;
+      case ')': return s + cap_close;
+      case '^': return s + bol;
+      case '$': return s + eol;
       case '{':
       case '+':
       case '*':
-      case '?': return scan_error();
-      case '.': ctx.e = {char_int{}, ~char_int{}}; return s + quanti;
+      case '?': return error;
+      case '.': ctx.single.e = {char_int{}, ~char_int{}}; return s + quanti;
       case '\\': return s + backslash;
-      default : ctx.e = {c, c}; return s + quanti;
+      default : ctx.single.e = {c, c}; return s + quanti;
     }
   }
 
@@ -190,9 +215,9 @@ struct basic_scanner
   {
     TT;
     switch (c) {
-      case '+': return scan_quantifier_one_or_more(s);
-      case '*': return scan_quantifier_zero_or_more(s);
-      case '?': return scan_quantifier_optional(s);
+      case '+': return eval_quantifier_one_or_more(s);
+      case '*': return eval_quantifier_zero_or_more(s);
+      case '?': return eval_quantifier_optional(s);
       case '{': return s - quanti + interval;
       default: push_event(s); return scan_single(s - bifurcation);
     }
@@ -203,8 +228,8 @@ struct basic_scanner
   {
     TT;
     switch (c) {
-      //case 'd': return scan_quantifier_one_or_more(s);
-      //case 'w': return scan_quantifier_zero_or_more(s);
+      //case 'd': return eval_quantifier_one_or_more(s);
+      //case 'w': return eval_quantifier_zero_or_more(s);
       default: push_event(s); return s - backslash + quanti;
     }
   }
@@ -217,7 +242,7 @@ struct basic_scanner
   }
 
   template<S _s>
-  S scan_quantifier_one_or_more(Sc<_s> s)
+  S eval_quantifier_one_or_more(Sc<_s> s)
   {
     TT;
     if (s & accu) {
@@ -232,7 +257,7 @@ struct basic_scanner
   }
 
   template<S _s>
-  S scan_quantifier_zero_or_more(Sc<_s> s)
+  S eval_quantifier_zero_or_more(Sc<_s> s)
   {
     TT;
     if (s & accu) {
@@ -241,11 +266,11 @@ struct basic_scanner
     else {
 //       rngs.back().push_back({e, rngs.size()-1});
     }
-    return scan_quantifier_optional(s);
+    return eval_quantifier_optional(s);
   }
 
   template<S _s>
-  S scan_quantifier_optional(Sc<_s> s)
+  S eval_quantifier_optional(Sc<_s> s)
   {
     TT;
     if (s & accu) {
@@ -273,19 +298,19 @@ struct basic_scanner
       case '5': case '6': case '7': case '8': case '9':
         if (bool(s & (interval_N | interval_Nn))) {
           if (bool(s & interval_Nn)) {
-            ctx.n += c - '0';
+            ctx.interval.n += c - '0';
           }
           else {
-            ctx.n = c - '0';
+            ctx.interval.n = c - '0';
           }
           return s + interval_Nn;
         }
         else {
           if (bool(s & interval_Mm)) {
-            ctx.m += c - '0';
+            ctx.interval.m += c - '0';
           }
           else {
-            ctx.m = c - '0';
+            ctx.interval.m = c - '0';
           }
           return s + interval_Mm;
         }
@@ -302,48 +327,104 @@ struct basic_scanner
   S scan_bracket(Sc<_s> s)
   {
     TT;
-    return s;
+    if (s & bracket_start) {
+      Sc<_s - bracket_start> new_s;
+      ctx.bracket.is_reverse = ('^' == c);
+      switch (c) {
+        case '^': ctx.bracket.is_reverse = false; return new_s + bracket_start2;
+        case ']': return eval_bracket_close(new_s);
+        default :
+          ctx.bracket.is_reverse = false;
+          ctx.bracket.es.push_back({c, c});
+          return new_s + bracket;
+      }
+    }
+
+    if (s & bracket_start2) {
+      Sc<_s - bracket_start2> new_s;
+      switch (c) {
+        case ']': return eval_bracket_close(new_s);
+        default : ctx.bracket.es.push_back({c, c}); return new_s + bracket;
+      }
+    }
+
+    if (s & bracket_interval) {
+      Sc<_s - bracket_interval> new_s;
+      switch (c) {
+        case ']':
+          ctx.bracket.es.push_back({'-', '-'});
+          return eval_bracket_close(new_s);
+        default :
+          if (is_ascii_alnum(ctx.bracket.back().l)
+           && is_ascii_alnum(c)
+           && ctx.bracket.back().l <= c
+          ) {
+            ctx.bracket.back().r = c;
+            return new_s + bracket_start2;
+          }
+          return error;
+      }
+    }
+
+    if (s & bracket) {
+      Sc<_s - bracket> new_s;
+      switch (c) {
+        case '-': return new_s + bracket_interval;
+        case ']': return eval_bracket_close(new_s);
+        default : ctx.bracket.es.push_back({c, c}); return s;
+      }
+    }
+
+    return error;
+  }
+
+  template<S _s>
+  S eval_bracket_close(Sc<_s> s)
+  {
+    TT;
+    if (ctx.bracket.es.empty()) {
+      return error;
+    }
+    if (ctx.bracket.is_reverse) {
+      //reverse_transitions(ts, next_ts, state);
+    }
+    // rngs.emplace_back();
+    return s + quanti_bracket;
   }
 
   template<S _s>
   S scan_or(Sc<_s> s)
   {
     TT;
-    return s + pipe;
+    return s - pipe + start;
   }
 
   template<S _s>
-  S scan_open(Sc<_s> s)
+  S scan_capture_open(Sc<_s> s)
   {
     TT;
-    return s + open_cap + cap;
+    return s - cap_open;
   }
 
   template<S _s>
-  S scan_close(Sc<_s> s)
+  S scan_capture_close(Sc<_s> s)
   {
     TT;
-    return s + close_cap;
+    return s - cap_close;
   }
 
   template<S _s>
   S scan_bol(Sc<_s> s)
   {
     TT;
-    return s + bol;
+    return s - bol;
   }
 
   template<S _s>
   S scan_eol(Sc<_s> s)
   {
     TT;
-    return s + eol;
-  }
-
-  S scan_error()
-  {
-    TT;
-    return error;
+    return s - bifurcation - eol;
   }
 
   template<class If, class Else>
@@ -352,11 +433,30 @@ struct basic_scanner
   template<class If, class Else>
   decltype(auto) invoke_cond(std::true_type, If f, Else) { return f(); }
 
+  static bool is_ascii_alnum(char_int c)
+  {
+    return
+      ('0' <= c && c <= '9') ||
+      ('a' <= c && c <= 'z') ||
+      ('A' <= c && c <= 'Z');
+  }
+
   utf8_consumer consumer {nullptr};
   char_int c;
   struct {
-    Event e;
-    unsigned m, n;
+    struct {
+      Event e;
+    } single;
+
+    struct {
+      unsigned m, n;
+    } interval;
+
+    struct {
+      bool is_reverse;
+      std::vector<Event> es;
+      Event & back() { return es.back(); }
+    } bracket;
   } ctx;
 };
 
