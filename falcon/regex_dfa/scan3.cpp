@@ -1,36 +1,27 @@
 #include "scan.hpp"
+#include "print_automaton.hpp"
 // #include "scan_intervals.hpp"
 // #include "range_iterator.hpp"
 // #include "trace.hpp"
 
 #include <stdexcept>
-// #include <algorithm>
+#include <algorithm>
 #include <iostream>
 
-#include <cassert>
+#include <bitset>
 #include <type_traits>
+
+#include <cassert>
 
 #define SEQ_ENUM(m)   \
   m(start)            \
   m(accu)             \
-  m(quanti)           \
-  m(quanti_bracket)   \
-  m(backslash)        \
-  m(interval)         \
-  m(interval_Mm)      \
-  m(interval_N)       \
-  m(interval_Nn)      \
+  m(reuse)            \
+  m(subexpr)          \
   m(bol)              \
   m(eol)              \
-  m(is_bol)           \
-  m(cap_open)         \
-  m(cap_close)        \
-  m(pipe)             \
-  m(bracket_start)    \
-  m(bracket_start2)   \
   m(bracket)          \
-  m(bracket_interval) \
-  m(error)
+  m(bracket_reversed)
 
 
 namespace falcon {
@@ -55,10 +46,13 @@ struct States {
 
 using S = States::enum_t;
 
+constexpr S operator ~ (S a)
+{ return static_cast<S>(~uint(a) & ((1u << States::NB) - 1u)); }
+
 constexpr S operator & (S a, S b) { return static_cast<S>(uint(a) & uint(b)); }
 constexpr S operator | (S a, S b) { return static_cast<S>(uint(a) | uint(b)); }
 constexpr S operator + (S a, S b) { return static_cast<S>(uint(a) | uint(b)); }
-constexpr S operator - (S a, S b) { return static_cast<S>(uint(a) & ~uint(b)); }
+constexpr S operator - (S a, S b) { return static_cast<S>(uint(a) & uint(~b)); }
 
 template<S s> struct Sc : std::integral_constant<S, s>
 {
@@ -78,15 +72,17 @@ namespace {
 #undef DEFINED_VALUE_EXPR
 
   constexpr Sc<
+    bol
+  + eol
+  + bracket
+  + subexpr
+  > previous_strong_state {};
+
+  constexpr Sc<
     accu
   + start
-  + cap_open
-  + pipe
-  + bol
-  + eol
-  + quanti
-  + quanti_bracket
-  > bifurcation;
+  + previous_strong_state
+  > bifurcation {};
 }
 // template<S s> constexpr std::integral_constant<bool, !s> operator ! (Sc<s>) { return {}; }
 // constexpr std::true_type operator ! (std::false_type) { return {}; }
@@ -117,321 +113,553 @@ std::ostream & operator<<(std::ostream & out, S s)
   return out;
 }
 
-#define TT std::cerr << __PRETTY_FUNCTION__ << '\n'
-// #define TT void(1)
+#define TRACE(expr)  std::cerr << expr << '\n'
+// #define TRACE(expr)  void(1)
+
+#define TT TRACE(__PRETTY_FUNCTION__)
 
 using parse_error = std::runtime_error;
 
-// make new_scan && rlwrap ./new_scan |& sed -E 's/(.*)falcon::regex_dfa::scanner::S falcon::regex_dfa::scanner::basic_scanner::([^(]+).*enum_t\)([^u]+)u.*/\1\2(<\3>)/g'
+// make new_scan && rlwrap ./new_scan |& sed -E 's/falcon::regex_dfa::scanner::basic_scanner:://g;s/with |void |\(\* (next|break)_act\)\(\) = |\(?falcon::regex_dfa::scanner::States::enum_t[) ]//g'
 
 struct basic_scanner
 {
+  using act_t = void(basic_scanner::*)();
+  using B = basic_scanner;
+
+  void nil() {}
+
+  template<act_t next_act, act_t break_act = &B::nil>
+  void next()
+  {
+    TT;
+
+    if ((c = consumer.bumpc())) {
+      TRACE("- " << utf8_char(c) << " -");
+      (this->*next_act)();
+    }
+    else {
+      (this->*break_act)();
+    }
+  }
+
+  [[noreturn]] void error() { throw parse_error{"error"}; }
+  [[noreturn]] void error_end_of_string() { throw parse_error{"error end of string"}; }
 
   void scan(const char * s)
   {
     TT;
+    ctx.next_st = Range::None;
     consumer = utf8_consumer{s};
-    S e = start;
+//     S e = start;
 
-#define U(s) static_cast<unsigned>(static_cast<S>(s))
-#define CASE(evt, func) case U(evt): e = func(evt); break
-#ifdef IN_IDE_PARSER
-#define CASE3 CASE
-#define CASE4 CASE
-#else
-#define CASE3(evt, func)   \
-  CASE(start | evt, func); \
-  CASE(none  | evt, func); \
-  CASE(accu  | evt, func);
-#define CASE4(evt, func) \
-  CASE3(evt, func);      \
-  CASE(start | accu | evt, func)
-#endif
-    while ((c = consumer.bumpc())) {
-      std::cerr << utf8_char(c) << " [ " << e << "] > ";
-      switch (U(e)) {
-        CASE4(none, scan_single);
+    next<&B::scan_single<start>>();
+    ctx.rngs.emplace_back();
 
-        CASE4(backslash, scan_escaped);
+//     if (bool(e & escaped)) {
+//       throw parse_error("error end of string");
+//     }
 
-        CASE4(quanti, scan_quantifier);
-        CASE4(quanti_bracket, scan_quantifier);
-
-        CASE4(interval, scan_interval);
-        CASE4(interval | interval_Mm, scan_interval);
-        CASE4(interval | interval_Mm | interval_N, scan_interval);
-        CASE4(interval | interval_Mm | interval_N | interval_Nn, scan_interval);
-        CASE4(interval | interval_N, scan_interval);
-        CASE4(interval | interval_N | interval_Nn, scan_interval);
-
-        CASE4(bracket_start, scan_bracket);
-        CASE4(bracket_start2, scan_bracket);
-        CASE4(bracket, scan_bracket);
-        CASE4(bracket_interval, scan_bracket);
-
-        CASE4(cap_close, scan_capture_open);
-        CASE4(cap_open, scan_capture_close);
-
-        case U(error): throw parse_error("syntax error");
-        default : throw parse_error("unimplemented [ " + to_string(e) + "]");
-      }
-    }
-#undef U
-#undef CASE3
-#undef CASE4
-#undef CASE
-    if (bool(e & backslash)) {
-      throw parse_error("error end of string");
-    }
-
-    if (bool(e & quanti)) {
-      //push_event(quanti, e);
-    }
+//     if (bool(e & quanti)) {
+//       //push_event(quanti, e);
+//     }
   }
 
-  template<S _s>
-  S scan_single(Sc<_s> s)
+  template<S s>
+  void scan_single()
   {
     TT;
+
+    static_assert(!bool(s & (bracket | subexpr)), "invalid state");
+    static_assert(!(bool(s & reuse) && bool(s & accu)), "invalid state");
+
     switch (c) {
-      case '[': return s + bracket_start;
-      case '|': return s + pipe;
-      case '(': return s + cap_open;
-      case ')': return s + cap_close;
-      case '^': return s + bol;
-      case '$': return s + eol;
+      case '[': return eval_bracket<s-reuse>();
+      case '|': return eval_pipe<s-reuse>();
+      case '(': return eval_open_subexpr<s-reuse>();
+      case ')': return eval_close_subexpr<s-reuse>();
+      case '^': return eval_bol<s>();
+      case '$': return eval_eol<s>();
+      case '\\': return next<
+        &B::scan_in_escape<s, &B::scan_single<s>>
+      , &B::error_end_of_string>();
       case '{':
       case '+':
       case '*':
-      case '?': return error;
-      case '.': ctx.single.e = {char_int{}, ~char_int{}}; return s + quanti;
-      case '\\': return s + backslash;
-      default : ctx.single.e = {c, c}; return s + quanti;
+      case '?': return error();
+      case '.':
+        new_single<s>({char_int{}, ~char_int{}});
+        return next<&B::scan_quanti<s>, &B::push_single<s&accu>>();
+      default :
+        new_single<s>({c, c});
+        return next<&B::scan_quanti<s>, &B::push_single<s&accu>>();
     }
   }
 
-  template<S _s>
-  S scan_quantifier(Sc<_s> s)
+  template<S s>
+  void new_single(Event const & e)
+  {
+    TT;
+    if (!bool(s & reuse)) {
+      ctx.rngs.emplace_back();
+      print_automaton(ctx.rngs);
+    }
+    if (bool(s & (bol + eol))) {
+      ctx.rngs.back().states = ctx.next_st;
+      ctx.next_st = Range::None;
+    }
+    ctx.rngs.back().transitions.emplace_back(e, ctx.rngs.size());
+  }
+
+  template<S s>
+  void push_single()
+  {
+    if (bool(s & accu)) {
+      auto & e = ctx.rngs.back().transitions.back().e;
+      for (auto i : ctx.curr_rngs) {
+        ctx.rngs[i].transitions.emplace_back(e, ctx.rngs.size());
+      }
+    }
+  }
+
+  template<S s>
+  void scan_quanti()
   {
     TT;
     switch (c) {
-      case '+': return eval_quantifier_one_or_more(s);
-      case '*': return eval_quantifier_zero_or_more(s);
-      case '?': return eval_quantifier_optional(s);
-      case '{': return s - quanti + interval;
-      default: push_event(s); return scan_single(s - bifurcation);
+      case '*': return eval_closure0<s>();
+      case '+': return eval_closure1<s-reuse>();
+      case '?': return eval_opt<s-reuse>();
+      case '{': return eval_brace<s-reuse>();
+      default :
+        if (bool(s & subexpr)) {
+          //push_event<s - subexpr>();
+        }
+        if (bool(s & bracket)) {
+
+        }
+        else if (bool(s & accu)) {
+          auto & e = ctx.rngs.back().transitions.back().e;
+          for (auto i : ctx.curr_rngs) {
+            ctx.rngs[i].transitions.emplace_back(e, ctx.rngs.size());
+          }
+        }
+        // TODO stop_accu
+        return scan_single<s - bifurcation - reuse>();
     }
   }
 
-  template<S _s>
-  S scan_escaped(Sc<_s> s)
+  template<S s>
+  void eval_closure0()
+  {
+    TT;
+    auto & e = ctx.rngs.back().transitions.back().e;
+    if (bool(s & subexpr)) {
+      // TODO
+    }
+    if (bool(s & accu)) {
+      for (auto i : ctx.curr_rngs) {
+        ctx.rngs[i].transitions.emplace_back(
+          e,
+          // TODO not eol
+          bool(s & (bol | eol | reuse)) ? ctx.rngs.size() : ctx.rngs.size()-1
+        );
+      }
+    }
+    else {
+      ctx.curr_rngs.clear();
+    }
+
+    // TODO not eol
+    if (bool(s & (bol | eol | reuse))) {
+      ctx.curr_rngs.emplace_back(ctx.rngs.size()-1);
+      ctx.curr_rngs.emplace_back(ctx.rngs.size());
+      ctx.rngs.emplace_back();
+      ctx.rngs.back().transitions.emplace_back(e, ctx.rngs.size()-1);
+    }
+    else {
+      ctx.curr_rngs.emplace_back(ctx.rngs.size()-1);
+      ctx.rngs.back().transitions.emplace_back(e, ctx.rngs.size()-1);
+    }
+
+    return next<&B::scan_single<s + accu - previous_strong_state - reuse>>();
+  }
+
+  template<S s>
+  void eval_closure1()
+  {
+    TT;
+    auto & e = ctx.rngs.back().transitions.back().e;
+    if (bool(s & subexpr)) {
+      // TODO
+    }
+    if (bool(s & accu)) {
+      for (auto i : ctx.curr_rngs) {
+        ctx.rngs[i].transitions.emplace_back(e, ctx.rngs.size());
+      }
+    }
+    ctx.rngs.emplace_back();
+    ctx.rngs.back().transitions.emplace_back(e, ctx.rngs.size()-1);
+    return next<&B::scan_single<s - bifurcation + reuse>>();
+  }
+
+  template<S s>
+  void eval_opt()
+  {
+    TT;
+    if (bool(s & subexpr)) {
+      // TODO
+    }
+    if (bool(s & accu)) {
+      auto & e = ctx.rngs.back().transitions.back().e;
+      for (auto i : ctx.curr_rngs) {
+        ctx.rngs[i].transitions.emplace_back(e, ctx.rngs.size());
+      }
+    }
+    else {
+      ctx.curr_rngs.clear();
+    }
+    ctx.curr_rngs.emplace_back(ctx.rngs.size()-1);
+    return next<&B::scan_single<s + accu - previous_strong_state>>();
+  }
+
+  template<S s, act_t next_act>
+  void scan_in_escape()
   {
     TT;
     switch (c) {
-      //case 'd': return eval_quantifier_one_or_more(s);
-      //case 'w': return eval_quantifier_zero_or_more(s);
-      default: push_event(s); return s - backslash + quanti;
+      //case 'd': return ;
+      //case 'w': return ;
+      default: push_event<s>(); return next<next_act>();
     }
   }
 
-  template<S _s>
-  S push_event(Sc<_s> s)
+  template<S s>
+  void push_event()
   {
     TT;
-    return s - bifurcation;
+    if (bool(s & bracket)) {
+    }
+    else if (bool(s & accu)) {
+      ctx.ts.emplace_back(ctx.single.e, ctx.rngs.size());
+      for (auto u : ctx.curr_rngs) {
+        Transitions & ts = ctx.rngs[u].transitions;
+        ts.insert(ts.end(), ctx.ts.begin(), ctx.ts.end());
+      }
+    }
+    else {
+//       for (auto u : ctx.curr_rngs) {
+//         Transitions & ts = ctx.rngs[u].transitions;
+//         ts.emplace_back(ctx.single.e, ctx.rngs.size());
+//       }
+    }
   }
 
-  template<S _s>
-  S eval_quantifier_one_or_more(Sc<_s> s)
+  template<S s>
+  void events_to_rng()
   {
-    TT;
-    if (s & accu) {
+    if (bool(s & accu)) {
 
     }
     else {
-//       rngs.back().emplace_back(e, rngs.size()-1);
-//       rngs.back().emplace_back(e, rngs.size());
+
     }
-//     rngs.emplace_back();
-    return s - bifurcation;
   }
 
-  template<S _s>
-  S eval_quantifier_zero_or_more(Sc<_s> s)
+  template<S s>
+  void eval_brace()
   {
     TT;
-    if (s & accu) {
-
-    }
-    else {
-//       rngs.back().push_back({e, rngs.size()-1});
-    }
-    return eval_quantifier_optional(s);
+    return next<
+      &B::scan_in_brace<s, false>
+    , &B::error_end_of_string>();
   }
 
-  template<S _s>
-  S eval_quantifier_optional(Sc<_s> s)
+  template<S s, bool is_empty_subsexpr>
+  void scan_in_brace()
   {
     TT;
-    if (s & accu) {
-
-    }
-    else {
-//       rngs.emplace_back();
-//       irngs.clear();
-//       irngs.emplace_back(rngs.size()-2);
-//       irngs.emplace_back(rngs.size()-1);
-    }
-    return s + accu - quanti;
-  }
-
-  template<S _s>
-  S scan_interval(Sc<_s> s)
-  {
-    TT;
-    // {interval_Mm ,interval_N interval_Nn}
-    // {interval_Mm}
-    // {interval_Mm ,interval_N}
-    // {,interval_N interval_Nn}
     switch (c) {
       case '0': case '1': case '2': case '3': case '4':
       case '5': case '6': case '7': case '8': case '9':
-        if (bool(s & (interval_N | interval_Nn))) {
-          if (bool(s & interval_Nn)) {
-            ctx.interval.n += c - '0';
-          }
-          else {
-            ctx.interval.n = c - '0';
-          }
-          return s + interval_Nn;
+        if (!is_empty_subsexpr) {
+          ctx.interval.m = c - '0';
         }
-        else {
-          if (bool(s & interval_Mm)) {
-            ctx.interval.m += c - '0';
-          }
-          else {
-            ctx.interval.m = c - '0';
-          }
-          return s + interval_Mm;
+        return next<&B::scan_in_brace_m<s, is_empty_subsexpr>>();
+      case ',':
+        if (!is_empty_subsexpr) {
+          ctx.interval.n = 0;
         }
-        return s + interval_N;
-      case ',': return (s & interval_N) ? error() : s + interval_N;
-      case '}': return (s & (interval_Mm | interval_Nn))
-        ? s - interval_Mm - interval_N - interval_Nn
-        : error();
-      default: return error;
+        return next<&B::scan_in_brace_x_n<s, is_empty_subsexpr, 0>>();
+      default: return error();
     }
   }
 
-  template<S _s>
-  S scan_bracket(Sc<_s> s)
+  template<S s, bool is_empty_subsexpr>
+  void scan_in_brace_m()
   {
     TT;
-    if (s & bracket_start) {
-      Sc<_s - bracket_start> new_s;
-      ctx.bracket.is_reverse = ('^' == c);
-      switch (c) {
-        case '^': ctx.bracket.is_reverse = false; return new_s + bracket_start2;
-        case ']': return eval_bracket_close(new_s);
-        default :
-          ctx.bracket.is_reverse = false;
-          ctx.bracket.es.push_back({c, c});
-          return new_s + bracket;
+    switch (c) {
+      case '0': case '1': case '2': case '3': case '4':
+      case '5': case '6': case '7': case '8': case '9':
+        if (!is_empty_subsexpr) {
+          ctx.interval.m *= 10;
+          ctx.interval.m += c - '0';
+        }
+        return next<&B::scan_in_brace_m<s, is_empty_subsexpr>>();
+      case ',':
+        if (!is_empty_subsexpr) {
+          ctx.interval.n = 0;
+        }
+        return next<&B::scan_in_brace_x_n<s, is_empty_subsexpr, 1>>();
+      case '}': return eval_close_brace<is_empty_subsexpr ? s : s-accu>();
+      default: return error();
+    }
+  }
+
+  template<S s, bool is_empty_subsexpr, bool has_accu>
+  void scan_in_brace_x_n()
+  {
+    TT;
+    switch (c) {
+      case '0': case '1': case '2': case '3': case '4':
+      case '5': case '6': case '7': case '8': case '9':
+        if (!is_empty_subsexpr) {
+          ctx.interval.n *= 10;
+          ctx.interval.n += c - '0';
+        }
+        return next<&B::scan_in_brace_x_n<s, is_empty_subsexpr, has_accu>>();
+      case '}': return eval_close_brace<
+        is_empty_subsexpr ? s : has_accu ? s+accu : s-accu
+      >();
+      default: return error();
+    }
+  }
+
+  template<S s>
+  void eval_close_brace()
+  {
+    return next<&B::scan_single<s - previous_strong_state>>();
+  }
+
+  template<S s>
+  void eval_bracket()
+  {
+    TT;
+    return next<
+      &B::scan_in_bracket<s + bracket>
+    , &B::error_end_of_string>();
+  }
+
+  template<S s>
+  void scan_in_bracket()
+  {
+    TT;
+    ctx.bracket.is_reverse = false;
+    switch (c) {
+      case '^':
+        ctx.bracket.is_reverse = true;
+        return next<
+          &B::scan_in_bracket_first<s+bracket_reversed>
+        , &B::error_end_of_string>();
+      default :
+        return scan_in_bracket_first<s>();
+    }
+  }
+
+  template<S s>
+  void scan_in_bracket_first()
+  {
+    TT;
+    switch (c) {
+      case ']':
+        if (bool(s & bracket_reversed)) {
+          return error();
+        }
+        return eval_empty_bracket_close<s>();
+      case '-':
+        ctx.bracket.push_back(c);
+        return next<&B::scan_in_bracket_a<s>>();
+      case '\\':
+        return next<
+          &B::scan_in_escape<s, &B::scan_in_bracket_a<s>>
+        , &B::error_end_of_string>();
+      default :
+        ctx.bracket.push_back(c);
+        return next<&B::scan_in_bracket_a<s>, &B::error>();
+    }
+  }
+
+  template<S s>
+  void scan_in_bracket_a()
+  {
+    TT;
+    switch (c) {
+      case ']': return eval_bracket_close<s>();
+      case '\\':
+        return next<
+          &B::scan_in_escape<s, &B::scan_in_bracket_b<s>>
+        , &B::error_end_of_string>();
+      default :
+        ctx.bracket.push_back(c);
+        return next<&B::scan_in_bracket_b<s>, &B::error>();
+    }
+  }
+
+  template<S s>
+  void scan_in_bracket_b()
+  {
+    TT;
+    switch (c) {
+      case '-': return scan_in_bracket_r<s>();
+      case ']': return eval_bracket_close<s>();
+      case '\\':
+        return next<
+          &B::scan_in_escape<s, &B::scan_in_bracket_a<s>>
+        , &B::error_end_of_string>();
+      default :
+        ctx.bracket.push_back(c);
+        return next<&B::scan_in_bracket_a<s>, &B::error>();
+    }
+  }
+
+  template<S s>
+  void scan_in_bracket_r()
+  {
+    TT;
+    switch (c) {
+      case ']': return eval_bracket_close<s>();
+      case '\\':
+        return next<
+          &B::scan_in_escape<s, &B::scan_in_bracket_a<s>>
+        , &B::error_end_of_string>();
+      default :
+        ctx.bracket.back().r = c;
+        return next<&B::scan_in_bracket_a<s>, &B::error>();
+    }
+  }
+
+  template<S s>
+  void eval_bracket_close()
+  {
+    if (bool(s & bracket_reversed)) {
+      reverse_bracket();
+    }
+
+    return eval_empty_bracket_close<s>();
+  }
+
+  template<S s>
+  void eval_empty_bracket_close()
+  {
+    return next<
+      &B::scan_quanti<s - bracket_reversed>
+    , &B::push_event<s - bracket_reversed>>();
+  }
+
+
+  template<S s>
+  void eval_open_subexpr()
+  {
+    TT;
+    return next<&B::scan_maybe_ext_subexpr<s>, &B::error_end_of_string>();
+  }
+
+  template<S s>
+  void scan_maybe_ext_subexpr()
+  {
+    TT;
+    switch (c) {
+      case ')': return next<&B::scan_quanti_empty_subexpr<s>>();
+      case '?': return next<&B::scan_ext_subexpr<s>, &B::error_end_of_string>();
+      default : return eval_subexpr<s>();
+    }
+  }
+
+  template<S s>
+  void scan_ext_subexpr()
+  {
+    TT;
+    switch (c) {
+      case '!': return eval_subexpr<s>();
+      default : return error();
+    }
+  }
+
+  template<S s>
+  void scan_quanti_empty_subexpr()
+  {
+    TT;
+    switch (c) {
+      case '{': return next<&B::scan_in_brace<s, 1>, &B::error_end_of_string>();
+      case '*':
+      case '+':
+      case '?': return next<&B::scan_single<s>>();
+      default : return scan_single<s>();
+    }
+  }
+
+  template<S s>
+  void eval_subexpr()
+  {
+    TT;
+    ++ctx.subexpr.depth;
+    if (bool(s & accu)) {
+      if (ctx.subexpr.depth > Ctx::Subexpr::max_depth) {
+        return error();
+      }
+      ctx.subexpr.is_accu_flags.set(ctx.subexpr.depth);
+      // TODO
+    }
+    return next<&B::scan_single<start>>();
+  }
+
+  template<S s>
+  void eval_close_subexpr()
+  {
+    TT;
+    if (!ctx.subexpr.depth) {
+      return error();
+    }
+
+    {
+      if (ctx.subexpr.is_accu_flags.test(ctx.subexpr.depth)) {
+        ctx.subexpr.is_accu_flags.reset(ctx.subexpr.depth);
+        // TODO
       }
     }
 
-    if (s & bracket_start2) {
-      Sc<_s - bracket_start2> new_s;
-      switch (c) {
-        case ']': return eval_bracket_close(new_s);
-        default : ctx.bracket.es.push_back({c, c}); return new_s + bracket;
-      }
+    ctx.subexpr.depth--;
+    return next<&B::scan_quanti<s + subexpr>>();
+  }
+
+  template<S s>
+  void eval_pipe()
+  {
+    TT;
+    // TODO
+    return next<&B::scan_single<s>>();
+  }
+
+  template<S s>
+  void eval_bol()
+  {
+    TT;
+    if (!bool(s & start)) {
+      // TODO
     }
 
-    if (s & bracket_interval) {
-      Sc<_s - bracket_interval> new_s;
-      switch (c) {
-        case ']':
-          ctx.bracket.es.push_back({'-', '-'});
-          return eval_bracket_close(new_s);
-        default :
-          if (is_ascii_alnum(ctx.bracket.back().l)
-           && is_ascii_alnum(c)
-           && ctx.bracket.back().l <= c
-          ) {
-            ctx.bracket.back().r = c;
-            return new_s + bracket_start2;
-          }
-          return error;
-      }
-    }
-
-    if (s & bracket) {
-      Sc<_s - bracket> new_s;
-      switch (c) {
-        case '-': return new_s + bracket_interval;
-        case ']': return eval_bracket_close(new_s);
-        default : ctx.bracket.es.push_back({c, c}); return s;
-      }
-    }
-
-    return error;
+    ctx.next_st |= Range::Bol;
+    return next<&B::scan_single<s + bol>>();
   }
 
-  template<S _s>
-  S eval_bracket_close(Sc<_s> s)
+  template<S s>
+  void eval_eol()
   {
     TT;
-    if (ctx.bracket.es.empty()) {
-      return error;
-    }
-    if (ctx.bracket.is_reverse) {
-      //reverse_transitions(ts, next_ts, state);
-    }
-    // rngs.emplace_back();
-    return s + quanti_bracket;
+    ctx.next_st |= Range::Eol;
+    return next<&B::scan_single<s + eol>>();
   }
-
-  template<S _s>
-  S scan_or(Sc<_s> s)
-  {
-    TT;
-    return s - pipe + start;
-  }
-
-  template<S _s>
-  S scan_capture_open(Sc<_s> s)
-  {
-    TT;
-    return s - cap_open;
-  }
-
-  template<S _s>
-  S scan_capture_close(Sc<_s> s)
-  {
-    TT;
-    return s - cap_close;
-  }
-
-  template<S _s>
-  S scan_bol(Sc<_s> s)
-  {
-    TT;
-    return s - bol;
-  }
-
-  template<S _s>
-  S scan_eol(Sc<_s> s)
-  {
-    TT;
-    return s - bifurcation - eol;
-  }
-
-  template<class If, class Else>
-  decltype(auto) invoke_cond(std::false_type, If, Else f) { return f(); }
-
-  template<class If, class Else>
-  decltype(auto) invoke_cond(std::true_type, If f, Else) { return f(); }
 
   static bool is_ascii_alnum(char_int c)
   {
@@ -441,9 +669,67 @@ struct basic_scanner
       ('A' <= c && c <= 'Z');
   }
 
+  void reverse_bracket()
+  {
+    auto & ts = ctx.bracket.es;
+    std::sort(ts.begin(), ts.end(), [](Event & e1, Event & e2) {
+      return e1.l < e2.l;
+    });
+    auto pred = [](Event & e1, Event & e2) {
+      return e2.l <= e1.r || e1.r + 1 == e2.l;
+    };
+    auto first = std::adjacent_find(ts.begin(), ts.end(), pred);
+    auto last = ts.end();
+    if (first != last) {
+      auto result = first;
+      result->r = std::max(result->r, first->r);
+      while (++first != last) {
+        if (pred(*result, *first)) {
+          result->r = std::max(result->r, first->r);
+        }
+        else {
+          ++result;
+          *result = *first;
+        }
+      }
+      ts.resize(result - ts.begin() + 1);
+    }
+
+    first = ts.begin();
+    last = ts.end();
+
+    if (ts.front().l) {
+      auto c1 = first->r;
+      first->r = first->l-1;
+      first->l = 0;
+      for (; ++first !=last; ) {
+        auto c2 = first->l;
+        first->l = c1+1;
+        c1 = first->r;
+        first->r = c2-1;
+      }
+      if (c1 != ~char_int{}) {
+        ts.push_back({++c1, ~char_int{}});
+      }
+    }
+    else {
+      --last;
+      for (; first != last; ++first) {
+        first->l = first->r + 1;
+        first->r = (first+1)->l - 1;
+      }
+      if (first->r != ~char_int{}) {
+        first->r = ~char_int{};
+      }
+      else {
+        ts.pop_back();
+      }
+    }
+  }
+
   utf8_consumer consumer {nullptr};
   char_int c;
-  struct {
+  struct Ctx {
     struct {
       Event e;
     } single;
@@ -456,7 +742,25 @@ struct basic_scanner
       bool is_reverse;
       std::vector<Event> es;
       Event & back() { return es.back(); }
+      void push_back(char_int c) { es.push_back({c, c}); }
     } bracket;
+
+    struct Subexpr {
+      static constexpr std::size_t max_depth = 64;
+      using bitset_t = std::bitset<max_depth>;
+
+      unsigned depth = 0;
+      bitset_t is_accu_flags = 0;
+    } subexpr;
+
+    struct Pipe {
+
+    } pipe;
+
+    Ranges rngs;
+    std::vector<unsigned> curr_rngs;
+    Range::State next_st;
+    Transitions ts;
   } ctx;
 };
 
@@ -468,7 +772,7 @@ Ranges scan(const char * s)
 //   scanner.prepare();
   scanner.scan(s);
 //   return scanner.final();
-  return Ranges{};
+  return std::move(scanner.ctx.rngs);
 }
 
 }

@@ -106,4 +106,4 @@ set(EXE_MATCH re_match test_match)
 
 link_library(lib_match ${EXE_MATCH})
 link_library(lib_scan ${EXE_SCAN} ${EXE_MATCH})
-link_library(lib_print ${EXE_SCAN} ${EXE_MATCH})
+link_library(lib_print ${EXE_SCAN} ${EXE_MATCH} new_scan)

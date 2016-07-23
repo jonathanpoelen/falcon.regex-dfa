@@ -43,12 +43,6 @@ std::ostream & operator<<(std::ostream & os, Transition const & t)
     << "[" << t.e.l << "-" << t.e.r << "]"
        " ['" << char(t.e.l) << "'-'" << char(t.e.r) << "']"
   ;
-  if (t.states) {
-    os << colors[4]
-      << (t.states & Transition::Bol    ? " ^" : "  ")
-      << (t.states & Transition::Normal ? " =" : "  ")
-    ;
-  }
   return os
     << reset_color
     << " → " << t.next

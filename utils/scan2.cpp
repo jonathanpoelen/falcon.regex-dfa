@@ -1,5 +1,5 @@
 #include "falcon/regex_dfa/scan.hpp"
-// #include "falcon/regex_dfa/print_automaton.hpp"
+#include "falcon/regex_dfa/print_automaton.hpp"
 
 #include <iostream>
 
@@ -11,7 +11,7 @@ int main(int, char ** av) {
     while (*++arr_str) {
       std::cout << "pattern: \033[37;02m" << *arr_str << "\033[0m\n";
       //re::print_automaton(re::scan(*arr_str));
-      re::scan(*arr_str);
+      //re::scan(*arr_str);
     }
   }
   else {
@@ -23,8 +23,8 @@ int main(int, char ** av) {
       std::cin
     ) {
       try {
-        //re::print_automaton(re::scan(s.c_str()));
-        re::scan(s.c_str());
+        re::print_automaton(re::scan(s.c_str()));
+        //re::scan(s.c_str());
       }
       catch (std::exception const & e) {
         std::cerr << e.what() << "\n";
