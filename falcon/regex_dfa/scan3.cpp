@@ -6,12 +6,19 @@
 
 #include <stdexcept>
 #include <algorithm>
-#include <iostream>
 
 #include <bitset>
 #include <type_traits>
 
 #include <cassert>
+
+#ifdef RE_TRACE
+# include <iostream>
+# define TRACE(expr)  std::cerr << expr << '\n'
+#else
+# define TRACE(expr)  void(1)
+#endif
+
 
 #define SEQ_ENUM(m)   \
   m(start)            \
@@ -88,20 +95,7 @@ namespace {
 // constexpr std::true_type operator ! (std::false_type) { return {}; }
 // constexpr std::false_type operator ! (std::true_type) { return {}; }
 
-std::string to_string(S s)
-{
-  std::string str;
-  if (!bool(s)) {
-    str = "none ";
-  }
-  else {
-#define TO_STR(e) if (bool(s & S::e)) { str += #e " "; }
-    SEQ_ENUM(TO_STR)
-#undef TO_STR
-  }
-  return str;
-}
-
+#ifdef RE_TRACE
 std::ostream & operator<<(std::ostream & out, S s)
 {
   if (!bool(s)) {
@@ -112,9 +106,7 @@ std::ostream & operator<<(std::ostream & out, S s)
 #undef WRITE_IF
   return out;
 }
-
-#define TRACE(expr)  std::cerr << expr << '\n'
-// #define TRACE(expr)  void(1)
+#endif
 
 #define TT TRACE(__PRETTY_FUNCTION__)
 
@@ -129,7 +121,10 @@ struct basic_scanner
 
   void nil() {}
 
-  template<act_t next_act, act_t break_act = &B::nil>
+  [[noreturn]] void error() { throw parse_error{"error"}; }
+  [[noreturn]] void error_end_of_string() { throw parse_error{"error end of string"}; }
+
+  template<act_t next_act, act_t break_act = &B::error>
   void next()
   {
     TT;
@@ -143,9 +138,6 @@ struct basic_scanner
     }
   }
 
-  [[noreturn]] void error() { throw parse_error{"error"}; }
-  [[noreturn]] void error_end_of_string() { throw parse_error{"error end of string"}; }
-
   void scan(const char * s)
   {
     TT;
@@ -153,8 +145,13 @@ struct basic_scanner
     consumer = utf8_consumer{s};
 //     S e = start;
 
-    next<&B::scan_single<start>>();
-    ctx.rngs.emplace_back();
+    next<&B::scan_single<start>, &B::final_start>();
+
+    for (Range & r : ctx.rngs) {
+      if (!r.states) {
+        r.states = Range::Normal;
+      }
+    }
 
 //     if (bool(e & escaped)) {
 //       throw parse_error("error end of string");
@@ -163,6 +160,13 @@ struct basic_scanner
 //     if (bool(e & quanti)) {
 //       //push_event(quanti, e);
 //     }
+  }
+
+  void final_start()
+  {
+    TT;
+    ctx.rngs.emplace_back();
+    ctx.rngs.back().states = Range::Final;
   }
 
   template<S s>
@@ -189,10 +193,10 @@ struct basic_scanner
       case '?': return error();
       case '.':
         new_single<s>({char_int{}, ~char_int{}});
-        return next<&B::scan_quanti<s>, &B::push_single<s&accu>>();
+        return next<&B::scan_quanti<s>, &B::final_single<s&accu>>();
       default :
         new_single<s>({c, c});
-        return next<&B::scan_quanti<s>, &B::push_single<s&accu>>();
+        return next<&B::scan_quanti<s>, &B::final_single<s&accu>>();
     }
   }
 
@@ -202,7 +206,9 @@ struct basic_scanner
     TT;
     if (!bool(s & reuse)) {
       ctx.rngs.emplace_back();
+      #ifdef RE_TRACE
       print_automaton(ctx.rngs);
+      #endif
     }
     if (bool(s & (bol + eol))) {
       ctx.rngs.back().states = ctx.next_st;
@@ -212,14 +218,18 @@ struct basic_scanner
   }
 
   template<S s>
-  void push_single()
+  void final_single()
   {
+    TT;
     if (bool(s & accu)) {
       auto & e = ctx.rngs.back().transitions.back().e;
       for (auto i : ctx.curr_rngs) {
+        ctx.rngs[i].states |= Range::Final;
         ctx.rngs[i].transitions.emplace_back(e, ctx.rngs.size());
       }
     }
+    ctx.rngs.emplace_back();
+    ctx.rngs.back().states = Range::Final;
   }
 
   template<S s>
@@ -282,7 +292,26 @@ struct basic_scanner
       ctx.rngs.back().transitions.emplace_back(e, ctx.rngs.size()-1);
     }
 
-    return next<&B::scan_single<s + accu - previous_strong_state - reuse>>();
+    return next<
+      &B::scan_single<s + accu - previous_strong_state - reuse>
+    , &B::final_closure0<s>
+    >();
+  }
+
+  template<S s>
+  void final_closure0()
+  {
+    TT;
+    if (!bool(s & (bol | eol | reuse))) {
+      Transitions & ts = ctx.rngs.back().transitions;
+      ts[ts.size()-2].next = ts[ts.size()-1].next;
+      ts.pop_back();
+    }
+
+    for (auto i : ctx.curr_rngs) {
+      ctx.rngs[i].states |= Range::Final;
+    }
+    ctx.rngs.back().states |= Range::Final;
   }
 
   template<S s>
@@ -300,7 +329,16 @@ struct basic_scanner
     }
     ctx.rngs.emplace_back();
     ctx.rngs.back().transitions.emplace_back(e, ctx.rngs.size()-1);
-    return next<&B::scan_single<s - bifurcation + reuse>>();
+    return next<
+      &B::scan_single<s - bifurcation + reuse>
+    , &B::final_closure1
+    >();
+  }
+
+  void final_closure1()
+  {
+    TT;
+    ctx.rngs.back().states |= Range::Final;
   }
 
   template<S s>
@@ -320,7 +358,19 @@ struct basic_scanner
       ctx.curr_rngs.clear();
     }
     ctx.curr_rngs.emplace_back(ctx.rngs.size()-1);
-    return next<&B::scan_single<s + accu - previous_strong_state>>();
+    return next<
+      &B::scan_single<s + accu - previous_strong_state>
+    , &B::final_opt>();
+  }
+
+  void final_opt()
+  {
+    TT;
+    for (auto i : ctx.curr_rngs) {
+      ctx.rngs[i].states |= Range::Final;
+    }
+    ctx.rngs.emplace_back();
+    ctx.rngs.back().states |= Range::Final;
   }
 
   template<S s, act_t next_act>

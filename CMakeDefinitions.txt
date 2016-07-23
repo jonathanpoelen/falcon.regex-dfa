@@ -16,7 +16,7 @@ add_definitions(
     -Wmissing-format-attribute
     -Wpacked
     -Wredundant-decls
-    -Winline
+#    -Winline
     -Winit-self
     -Wcast-qual
     -Wnon-virtual-dtor
