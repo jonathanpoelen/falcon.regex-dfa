@@ -69,7 +69,7 @@ bool nfa_match(const Ranges& rngs, const char* s)
     void clear() { p = a.get(); }
   };
 
-  std::vector<unsigned> crossing_table(rngs.size(), 0);
+  std::unique_ptr<unsigned[]> crossing_table(new unsigned[rngs.size()]{});
   DynArray t1(rngs.size());
   DynArray t2(rngs.size());
 
@@ -79,17 +79,18 @@ bool nfa_match(const Ranges& rngs, const char* s)
   utf8_consumer consumer(s);
   char_int c;
 
-  auto next = [&](Transition::State states){
+  auto next = [&](Range::State states){
     for (Range const * prng : t1) {
       FALCON_REGEX_DFA_TRACE(std::cerr << "--- " << utf8_char(c) << " ---\n");
       FALCON_REGEX_DFA_TRACE(print_automaton(*prng, int(prng-&rngs.front())));
-      for (auto && t : prng->transitions) {
-        if (bool(t.states & states)
-         && t.e.contains(c)
-         && crossing_table[t.next] < auto_increment
-        ) {
-          t2.push_back(rngs[t.next]);
-          crossing_table[t.next] = auto_increment;
+      if (bool(prng->states & states)) {
+        for (auto && t : prng->transitions) {
+          if (t.e.contains(c)
+          && crossing_table[t.next] < auto_increment
+          ) {
+            t2.push_back(rngs[t.next]);
+            crossing_table[t.next] = auto_increment;
+          }
         }
       }
     }
@@ -101,10 +102,10 @@ bool nfa_match(const Ranges& rngs, const char* s)
   };
 
   if ((c = consumer.bumpc()) && !t1.empty()) {
-    next(Transition::Normal | Transition::Bol);
+    next(Range::Normal | Range::Bol);
 
     while ((c = consumer.bumpc()) && !t1.empty()) {
-      next(Transition::Normal);
+      next(Range::Normal);
     };
   }
 
@@ -122,7 +123,7 @@ bool nfa_match(const Ranges& rngs, const char* s)
     << "\nc: " << c
     << "\n"
   );
-  return (!c && has_state(Range::Final | Range::Eol));
+  return (c ? has_state(Range::Final) : has_state(Range::Final | Range::Eol));
 }
 
 
