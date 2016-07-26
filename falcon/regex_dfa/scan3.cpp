@@ -12,7 +12,7 @@
 
 #include <cassert>
 
-#ifdef RE_TRACE
+#ifdef FALCON_REGEX_DFA_ENABLE_TRACE
 # include <iostream>
 # define TRACE(expr)  std::cerr << expr << '\n'
 #else
@@ -21,6 +21,7 @@
 
 
 #define SEQ_ENUM(m)   \
+  m(first)            \
   m(start)            \
   m(accu)             \
   m(reuse)            \
@@ -28,6 +29,7 @@
   m(bol)              \
   m(eol)              \
   m(bracket)          \
+  m(alternative)      \
   m(bracket_reversed)
 
 
@@ -88,6 +90,8 @@ namespace {
   + eol
   + bracket
   + subexpr
+  + first
+  + alternative
   > previous_strong_state {};
 
   constexpr Sc<
@@ -100,7 +104,7 @@ namespace {
 // constexpr std::true_type operator ! (std::false_type) { return {}; }
 // constexpr std::false_type operator ! (std::true_type) { return {}; }
 
-#ifdef RE_TRACE
+#ifdef FALCON_REGEX_DFA_ENABLE_TRACE
 std::ostream & operator<<(std::ostream & out, S s)
 {
   if (!bool(s)) {
@@ -113,7 +117,8 @@ std::ostream & operator<<(std::ostream & out, S s)
 }
 #endif
 
-#define TT TRACE(__PRETTY_FUNCTION__)
+#define TT TRACE(__PRETTY_FUNCTION__ << "  " << s)
+#define TTNS TRACE(__PRETTY_FUNCTION__)
 
 using parse_error = std::runtime_error;
 
@@ -132,7 +137,7 @@ struct basic_scanner
   template<act_t next_act, act_t break_act = &B::error>
   void next()
   {
-    TT;
+    TTNS;
 
     if ((c = consumer.bumpc())) {
       TRACE("- " << utf8_char(c) << " -");
@@ -149,7 +154,13 @@ struct basic_scanner
     consumer = utf8_consumer{s};
 //     S e = start;
 
-    next<&B::scan_single<start>, &B::final_start>();
+    ctx.pipe.rng_end = 0;
+    ctx.curr_rngs.clear();
+    ctx.rngs.clear();
+    // TODO set bol
+    ctx.rngs.emplace_back();
+    ctx.rngs.front().states = Range::Bol;
+    next<&B::scan_single<start | first>, &B::final_start>();
 
 //     if (bool(e & escaped)) {
 //       throw parse_error("error end of string");
@@ -162,7 +173,7 @@ struct basic_scanner
 
   void final_start()
   {
-    TT;
+    TTNS;
     ctx.rngs.emplace_back();
     ctx.rngs.back().states = Range::Final;
   }
@@ -176,13 +187,13 @@ struct basic_scanner
 
     switch (c) {
       case '[': return eval_bracket<s-reuse>();
-      case '|': return eval_pipe<s-reuse>();
+      case '|': return eval_or<s-reuse>();
       case '(': return eval_open_subexpr<s-reuse>();
       case ')': return eval_close_subexpr<s-reuse>();
       case '^': return eval_bol<s>();
       case '$': return eval_eol<s>();
       case '\\': return next<
-        &B::scan_in_escape<s, &B::scan_single<s>>
+        &B::scan_in_escape<s, &B::scan_quanti<s>>
       , &B::error_end_of_string>();
       case '{':
       case '+':
@@ -201,23 +212,47 @@ struct basic_scanner
   void new_single(Event const & e)
   {
     TT;
-    if (!bool(s & reuse)) {
+
+    if (bool(s & bol)) {
+      ctx.rngs.front().transitions.emplace_back(e, 2u);
       ctx.rngs.emplace_back();
-      #ifdef RE_TRACE
+      return ;
+    }
+
+    if (bool(s & first)) {
+      ctx.rngs.emplace_back();
+      ctx.rngs.back().states = bool(s & eol) ? Range::Eol : Range::Normal;
+      ctx.rngs[1].transitions.emplace_back(e, 2u);
+      return ;
+    }
+
+    if (!bool(s & (reuse | alternative))) {
+      ctx.rngs.emplace_back();
+      #ifdef FALCON_REGEX_DFA_ENABLE_TRACE
       print_automaton(ctx.rngs);
       #endif
     }
-    if (bool(s & boleol)) {
-      switch (s & boleol) {
-        case bol: ctx.rngs.back().states = Range::Bol; break;
-        case eol: ctx.rngs.back().states = Range::Eol; break;
-        default : ctx.rngs.back().states = Range::Bol | Range::Eol; break;
-      }
+
+    if (bool(s & eol)) {
+      ctx.rngs.back().states = Range::Eol;
     }
-    else {
+    else if (!bool(s & alternative)) {
       ctx.rngs.back().states = Range::Normal;
     }
-    ctx.rngs.back().transitions.emplace_back(e, ctx.rngs.size());
+
+    last_rng<s>().transitions.emplace_back(e, ctx.rngs.size());
+  }
+
+  template<S s>
+  unsigned last_rng_index() {
+    return (s & (start | bol)) == (start | bol)
+      || bool(s & alternative)
+      ? 0u : unsigned(ctx.rngs.size()-1u);
+  }
+
+  template<S s>
+  Range & last_rng() {
+    return ctx.rngs[last_rng_index<s>()];
   }
 
   template<S s>
@@ -225,7 +260,7 @@ struct basic_scanner
   {
     TT;
     if (bool(s & accu)) {
-      auto & e = ctx.rngs.back().transitions.back().e;
+      auto & e = last_rng<s>().transitions.back().e;
       if (bool(s & reuse)) {
         ctx.curr_rngs.pop_back();
       }
@@ -243,9 +278,10 @@ struct basic_scanner
     TT;
     switch (c) {
       case '*': return eval_closure0<s>();
-      case '+': return eval_closure1<s-reuse>();
-      case '?': return eval_opt<s-reuse>();
+      case '+': return eval_closure1<s>();
+      case '?': return eval_opt<s>();
       case '{': return eval_brace<s-reuse>();
+      case '|': return eval_quanti_or<s>();
       default :
         if (bool(s & subexpr)) {
           //push_event<s - subexpr>();
@@ -254,7 +290,7 @@ struct basic_scanner
 
         }
         else if (bool(s & accu)) {
-          auto & e = ctx.rngs.back().transitions.back().e;
+          auto & e = last_rng<s>().transitions.back().e;
           if (bool(s & reuse)) {
             ctx.curr_rngs.pop_back();
           }
@@ -271,16 +307,21 @@ struct basic_scanner
   void eval_closure0()
   {
     TT;
-    auto & e = ctx.rngs.back().transitions.back().e;
+    auto & e = last_rng<s>().transitions.back().e;
     if (bool(s & subexpr)) {
       // TODO
     }
     if (bool(s & accu)) {
+      if (bool(s & reuse)) {
+        ctx.curr_rngs.pop_back();
+      }
       for (auto i : ctx.curr_rngs) {
         ctx.rngs[i].transitions.emplace_back(
           e,
           // TODO not eol
-          bool(s & (bol | eol | reuse)) ? ctx.rngs.size() : ctx.rngs.size()-1
+          bool(s & (first | bol)) ? 2u
+          : bool(s & (eol | reuse))
+          ? ctx.rngs.size() : ctx.rngs.size()-1
         );
       }
     }
@@ -289,17 +330,22 @@ struct basic_scanner
     }
 
     // TODO not eol
-    if (bool(s & (bol | eol | reuse))) {
-      ctx.curr_rngs.emplace_back(ctx.rngs.size()-1);
+    if (bool(s & (bol | eol | reuse | first))) {
+      ctx.curr_rngs.emplace_back(last_rng_index<s>());
       ctx.rngs.emplace_back();
+      ctx.curr_rngs.emplace_back(ctx.rngs.size()-1);
+      ctx.rngs.back().states = Range::Normal;
+      ctx.rngs.back().transitions.emplace_back(e, ctx.rngs.size()-1);
     }
-    ctx.curr_rngs.emplace_back(ctx.rngs.size()-1);
-    ctx.rngs.back().states = Range::Normal;
-    ctx.rngs.back().transitions.emplace_back(e, ctx.rngs.size()-1);
+    else {
+      ctx.curr_rngs.emplace_back(last_rng_index<s>());
+      last_rng<s>().states = Range::Normal;
+      last_rng<s>().transitions.emplace_back(e, last_rng_index<s>());
+    }
 
     return next<
       &B::scan_single<s + accu - previous_strong_state - reuse
-    + (bool(s & (bol | eol | reuse)) ? S::reuse : S::none)>
+    + (bool(s & (bol | eol | reuse | first)) ? S::reuse : S::none)>
     , &B::final_closure0<s>
     >();
   }
@@ -308,7 +354,7 @@ struct basic_scanner
   void final_closure0()
   {
     TT;
-    if (!bool(s & (bol | eol | reuse))) {
+    if (!bool(s & (bol | eol | reuse | first))) {
       Transitions & ts = ctx.rngs.back().transitions;
       ts[ts.size()-2].next = ts[ts.size()-1].next;
       ts.pop_back();
@@ -317,20 +363,25 @@ struct basic_scanner
     for (auto i : ctx.curr_rngs) {
       ctx.rngs[i].states |= Range::Final;
     }
-    ctx.rngs.back().states |= Range::Final;
+    last_rng<s>().states |= Range::Final;
   }
 
   template<S s>
   void eval_closure1()
   {
     TT;
-    auto & e = ctx.rngs.back().transitions.back().e;
+    auto & e = last_rng<s>().transitions.back().e;
     if (bool(s & subexpr)) {
       // TODO
     }
     if (bool(s & accu)) {
+      if (bool(s & reuse)) {
+        ctx.curr_rngs.pop_back();
+      }
       for (auto i : ctx.curr_rngs) {
-        ctx.rngs[i].transitions.emplace_back(e, ctx.rngs.size());
+        ctx.rngs[i].transitions.emplace_back(
+          e, bool(s & (bol | first)) ? 2u : last_rng_index<s>()+1u
+        );
       }
     }
     ctx.rngs.emplace_back();
@@ -344,7 +395,7 @@ struct basic_scanner
 
   void final_closure1()
   {
-    TT;
+    TTNS;
     ctx.rngs.back().states |= Range::Final;
   }
 
@@ -356,20 +407,27 @@ struct basic_scanner
       // TODO
     }
     if (bool(s & accu)) {
-      auto & e = ctx.rngs.back().transitions.back().e;
+      if (bool(s & reuse)) {
+        ctx.curr_rngs.pop_back();
+      }
+      auto & e = last_rng<s>().transitions.back().e;
       for (auto i : ctx.curr_rngs) {
-        ctx.rngs[i].transitions.emplace_back(e, ctx.rngs.size());
+        ctx.rngs[i].transitions.emplace_back(
+          e, bool(s & (first | bol)) ? 2u : last_rng_index<s>()+1u
+        );
       }
     }
     else {
       ctx.curr_rngs.clear();
     }
-    ctx.curr_rngs.emplace_back(ctx.rngs.size()-1);
+
+    ctx.curr_rngs.emplace_back(last_rng_index<s>());
     return next<
-      &B::scan_single<s + accu - previous_strong_state>
-    , &B::final_opt>();
+      &B::scan_single<s + accu - previous_strong_state - reuse>
+    , &B::final_opt<s>>();
   }
 
+  template<S s>
   void final_opt()
   {
     TT;
@@ -378,6 +436,37 @@ struct basic_scanner
     }
     ctx.rngs.emplace_back();
     ctx.rngs.back().states |= Range::Final;
+  }
+
+  template<S s>
+  void eval_quanti_or()
+  {
+    TT;
+    if (bool(s & accu)) {
+      auto & e = last_rng<s>().transitions.back().e;
+      if (bool(s & reuse)) {
+        ctx.curr_rngs.pop_back();
+      }
+      unsigned next = ctx.pipe.rng_end
+        ? ctx.pipe.rng_end
+        : unsigned(ctx.rngs.size());
+      for (auto i : ctx.curr_rngs) {
+        ctx.rngs[i].transitions.emplace_back(e, next);
+      }
+      ctx.pipe.stack_curr_rngs.insert(
+        std::end(ctx.pipe.stack_curr_rngs)
+      , std::begin(ctx.curr_rngs), std::end(ctx.curr_rngs));
+      ctx.pipe.stack_curr_rngs.emplace_back(ctx.curr_rngs.size());
+    }
+
+    if (ctx.pipe.rng_end) {
+      last_rng<s>().transitions.back().next = ctx.pipe.rng_end;
+    }
+    else {
+      ctx.pipe.rng_end = unsigned(ctx.rngs.size());
+    }
+
+    return next<&B::scan_single<start + alternative>>();
   }
 
   template<S s, act_t next_act>
@@ -691,7 +780,7 @@ struct basic_scanner
   }
 
   template<S s>
-  void eval_pipe()
+  void eval_or()
   {
     TT;
     // TODO
@@ -726,10 +815,13 @@ struct basic_scanner
     TT;
     if (bool(s & accu)) {
       for (auto i : ctx.curr_rngs) {
-        switch (s & boleol) {
-          case bol: ctx.rngs[i].states |= Range::Bol; break;
-          case eol: ctx.rngs[i].states |= Range::Eol; break;
-          default : ctx.rngs[i].states |= Range::Bol | Range::Eol; break;
+//         switch (s & boleol) {
+//           case bol: ctx.rngs[i].states |= Range::Bol; break;
+//           case eol: ctx.rngs[i].states |= Range::Eol; break;
+//           default : ctx.rngs[i].states |= Range::Bol | Range::Eol; break;
+//         }
+        if (bool(s & eol)) {
+          ctx.rngs[i].states |= Range::Eol;
         }
       }
     }
@@ -738,11 +830,14 @@ struct basic_scanner
       ctx.rngs.emplace_back();
     }
     // TODO |= -> = ?
-    switch (s & boleol) {
-      case bol: ctx.rngs.back().states |= Range::Bol; break;
-      case eol: ctx.rngs.back().states |= Range::Eol; break;
-      default : ctx.rngs.back().states |= Range::Bol | Range::Eol; break;
+    if (bool(s & eol)) {
+      ctx.rngs.back().states |= Range::Eol;
     }
+//     switch (s & boleol) {
+//       case bol: ctx.rngs.back().states |= Range::Bol; break;
+//       case eol: ctx.rngs.back().states |= Range::Eol; break;
+//       default : ctx.rngs.back().states |= Range::Bol | Range::Eol; break;
+//     }
   }
 
   static bool is_ascii_alnum(char_int c)
@@ -834,7 +929,9 @@ struct basic_scanner
     } subexpr;
 
     struct Pipe {
-
+      // {(curr_rngs..., size)...};
+      std::vector<unsigned> stack_curr_rngs;
+      unsigned rng_end;
     } pipe;
 
     Ranges rngs;
