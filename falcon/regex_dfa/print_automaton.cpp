@@ -63,6 +63,7 @@ std::ostream & operator<<(std::ostream & os, Range::State const & states)
     << (states & Range::Final   ? " @" : "  ")
     << (states & Range::Bol     ? " ^" : "  ")
     << (states & Range::Eol     ? " $" : "  ")
+    << (states & Range::Empty   ? " E" : "  ")
     << (states & Range::Normal  ? " =" : "  ")
     << (states & Range::Invalid ? " x" : "  ")
   ;

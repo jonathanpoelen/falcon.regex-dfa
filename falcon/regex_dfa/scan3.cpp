@@ -214,7 +214,7 @@ struct basic_scanner
     TT;
 
     if (bool(s & bol)) {
-      ctx.rngs.front().transitions.emplace_back(e, 2u);
+      bol_rng<s>().transitions.emplace_back(e, bol_rng_index<s>()+2u);
       ctx.rngs.emplace_back();
       return ;
     }
@@ -246,13 +246,26 @@ struct basic_scanner
   template<S s>
   unsigned last_rng_index() {
     return (s & (start | bol)) == (start | bol)
-      || bool(s & alternative)
-      ? 0u : unsigned(ctx.rngs.size()-1u);
+      ? bol_rng_index<s>()
+      : bool(s & alternative)
+      ? 0u
+      : unsigned(ctx.rngs.size()-1u);
   }
 
   template<S s>
   Range & last_rng() {
     return ctx.rngs[last_rng_index<s>()];
+  }
+
+  template<S s>
+  unsigned bol_rng_index() {
+    // TODO subexpr
+    return 0u;
+  }
+
+  template<S s>
+  Range & bol_rng() {
+    return ctx.rngs[bol_rng_index<s>()];
   }
 
   template<S s>
@@ -319,7 +332,7 @@ struct basic_scanner
         ctx.rngs[i].transitions.emplace_back(
           e,
           // TODO not eol
-          bool(s & (first | bol)) ? 2u
+          bool(s & (first | bol)) ? bol_rng_index<s>() + 2u
           : bool(s & (eol | reuse))
           ? ctx.rngs.size() : ctx.rngs.size()-1
         );
@@ -380,7 +393,10 @@ struct basic_scanner
       }
       for (auto i : ctx.curr_rngs) {
         ctx.rngs[i].transitions.emplace_back(
-          e, bool(s & (bol | first)) ? 2u : last_rng_index<s>()+1u
+          e,
+          bool(s & (bol | first))
+          ? bol_rng_index<s>() + 2u
+          : last_rng_index<s>() + 1u
         );
       }
     }
@@ -413,7 +429,10 @@ struct basic_scanner
       auto & e = last_rng<s>().transitions.back().e;
       for (auto i : ctx.curr_rngs) {
         ctx.rngs[i].transitions.emplace_back(
-          e, bool(s & (first | bol)) ? 2u : last_rng_index<s>()+1u
+          e,
+          bool(s & (first | bol))
+          ? bol_rng_index<s>() + 2u
+          : last_rng_index<s>() + 1u
         );
       }
     }
@@ -829,9 +848,14 @@ struct basic_scanner
     if (!bool(s & reuse)) {
       ctx.rngs.emplace_back();
     }
+
+    if ((s & boleol) == boleol) {
+      auto & st = last_rng<s>().states;
+      st = (st & ~Range::Bol) | Range::Empty;
+    }
     // TODO |= -> = ?
-    if (bool(s & eol)) {
-      ctx.rngs.back().states |= Range::Eol;
+    else if (bool(s & eol)) {
+      last_rng<s>().states |= Range::Eol;
     }
 //     switch (s & boleol) {
 //       case bol: ctx.rngs.back().states |= Range::Bol; break;

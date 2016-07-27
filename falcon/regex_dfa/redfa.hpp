@@ -108,7 +108,8 @@ struct Range {
     Final = 1 << 1,
     Bol = 1 << 2,
     Eol = 1 << 3,
-    Invalid = 1 << 4,
+    Empty = 1 << 4,
+    Invalid = 1 << 5,
     INC_LAST_FLAG
   };
   State states = None;

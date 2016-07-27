@@ -122,6 +122,7 @@ int main()
   auto const N = Range::Normal;
   auto const B = Range::Bol;
   auto const E = Range::Eol;
+  auto const C = Range::Empty;
   auto const BF = B | F;
   auto const BE = B | E;
   auto const NF = N | F;
@@ -130,131 +131,132 @@ int main()
   //auto const NBE = N | BE;
 
   auto const rf = r(F);
+  auto const ru = r(Range::None);
 
-  auto const ta0 = t('a', 0);
   auto const ta1 = t('a', 1);
+  auto const ta2 = t('a', 2);
+  auto const a2 = ts{ta2};
   auto const a1 = ts{ta1};
-  auto const a0 = ts{ta0};
 
-  TEST("", rs(rf));
+  TEST("", rs(ru, rf));
 
-  TEST("a", rs(r(a1), rf));
-  TEST(".", rs(r(ts{t(full, 1)}), rf));
+  TEST("a", rs(ru, r(a2), rf));
+  TEST(".", rs(ru, r(ts{t(full, 2)}), rf));
 
-  TEST("a?", rs(r(NF, a1), rf));
-  TEST("a+", rs(r(a1), r(NF, a1)));
-  TEST("a*", rs(r(NF, a1), r(NF, a1)));
+  TEST("a?", rs(ru, r(NF, a2), rf));
+  TEST("a+", rs(ru, r(a2), r(NF, a2)));
+  TEST("a*", rs(ru, r(NF, a2), r(NF, a2)));
 
-  TEST("^$", rs(r(BE)));
+  TEST("^$", rs(r(C), ru));
 
-  TEST("^a", rs(r(B, a1), rf));
-  TEST("^a?", rs(r(BF, a1), rf));
-  TEST("^a+", rs(r(B, a1), r(NF, a1)));
-  TEST("^a*", rs(r(BF, a1), r(NF, a1)));
+  TEST("^a", rs(r(B, a2), ru, rf));
+  TEST("^a?", rs(r(BF, a2), ru, rf));
+  TEST("^a+", rs(r(B, a2), ru, r(NF, a2)));
+  TEST("^a*", rs(r(BF, a2), ru, r(NF, a2)));
 
-  TEST("a$", rs(r(a1), r(E)));
-  TEST("a?$", rs(r(NE, a1), r(E)));
-  TEST("a+$", rs(r(a1), r(NE, a1)));
-  TEST("a*$", rs(r(NE, a1), r(NE, a1)));
+  TEST("a$", rs(ru, r(a2), r(E)));
+  TEST("a?$", rs(ru, r(NE, a2), r(E)));
+  TEST("a+$", rs(ru, r(a2), r(NE, a2)));
+  TEST("a*$", rs(ru, r(NE, a2), r(NE, a2)));
 
-  TEST("^a$", rs(r(B, a1), r(E)));
-  TEST("^a?$", rs(r(BE, a1), r(E)));
-  TEST("^a+$", rs(r(B, a1), r(NE, a1)));
-  TEST("^a*$", rs(r(BE, a1), r(NE, a1)));
+  TEST("^a$", rs(r(B, a2), ru, r(E)));
+  TEST("^a?$", rs(r(BE, a2), ru, r(E)));
+  TEST("^a+$", rs(r(B, a2), ru, r(NE, a2)));
+  TEST("^a*$", rs(r(BE, a2), ru, r(NE, a2)));
+
+  auto const tb3 = t('b', 3);
+  auto const a2b3 = ts{ta2, tb3};
+  auto const b3 = ts{tb3};
+
+  TEST("ab", rs(ru, r(a2), r(b3), rf));
+
+  TEST("a?b", rs(ru, r(a2b3), r(b3), rf));
+  TEST("a+b", rs(ru, r(a2), r(a2b3), rf));
+  TEST("a*b", rs(ru, r(a2b3), r(a2b3), rf));
+
+  TEST("^ab", rs(r(B, a2), ru, r(b3), rf));
+  TEST("^a?b", rs(r(B, a2b3), ru, r(b3), rf));
+  TEST("^a+b", rs(r(B, a2), ru, r(a2b3), rf));
+  TEST("^a*b", rs(r(B, a2b3), ru, r(a2b3), rf));
+
+  TEST("ab$", rs(ru, r(a2), r(b3), r(E)));
+  TEST("a?b$", rs(ru, r(a2b3), r(b3), r(E)));
+  TEST("a+b$", rs(ru, r(a2), r(a2b3), r(E)));
+  TEST("a*b$", rs(ru, r(a2b3), r(a2b3), r(E)));
+
+  TEST("^ab$", rs(r(B, a2), ru, r(b3), r(E)));
+  TEST("^a?b$", rs(r(B, a2b3), ru, r(b3), r(E)));
+  TEST("^a+b$", rs(r(B, a2), ru, r(a2b3), r(E)));
+  TEST("^a*b$", rs(r(B, a2b3), ru, r(a2b3), r(E)));
+
+  TEST("a?b?", rs(ru, r(NF, a2b3), r(NF, b3), rf));
+  TEST("a+b?", rs(ru, r(a2), r(NF, a2b3), rf));
+  TEST("a*b?", rs(ru, r(NF, a2b3), r(NF, a2b3), rf));
+
+  TEST("a?b+", rs(ru, r(a2b3), r(b3), r(NF, b3)));
+  TEST("a+b+", rs(ru, r(a2), r(a2b3), r(NF, b3)));
+  TEST("a*b+", rs(ru, r(a2b3), r(a2b3), r(NF, b3)));
 
   auto const tb2 = t('b', 2);
-  auto const a1b2 = ts{ta1, tb2};
   auto const b2 = ts{tb2};
+  auto const a2b2 = ts{ta2, tb2};
 
-  TEST("ab", rs(r(a1), r(b2), rf));
+  TEST("a?b*", rs(ru, r(NF, a2b2), r(NF, b2)));
+  TEST("a+b*", rs(ru, r(a2), r(NF, a2b3), r(NF, b3)));
+  TEST("a*b*", rs(ru, r(NF, a2b3), r(NF, a2b3), r(NF, b3)));
 
-  TEST("a?b", rs(r(a1b2), r(b2), rf));
-  TEST("a+b", rs(r(a1), r(a1b2), rf));
-  TEST("a*b", rs(r(a1b2), r(a1b2), rf));
+  auto const tc4 = t('c', 4);
+  auto const c4 = ts{tc4};
 
-  TEST("^ab", rs(r(B, a1), r(b2), rf));
-  TEST("^a?b", rs(r(B, a1b2), r(b2), rf));
-  TEST("^a+b", rs(r(B, a1), r(a1b2), rf));
-  TEST("^a*b", rs(r(B, a1b2), r(a1b2), rf));
+  TEST("a?bc", rs(ru, r(a2b3), r(b3), r(c4), rf));
+  TEST("a+bc", rs(ru, r(a2), r(a2b3), r(c4), rf));
+  TEST("a*bc", rs(ru, r(a2b3), r(a2b3), r(c4), rf));
 
-  TEST("ab$", rs(r(a1), r(b2), r(E)));
-  TEST("a?b$", rs(r(a1b2), r(b2), r(E)));
-  TEST("a+b$", rs(r(a1), r(a1b2), r(E)));
-  TEST("a*b$", rs(r(a1b2), r(a1b2), r(E)));
+  TEST("^a?bc", rs(r(B, a2b3), ru, r(b3), r(c4), rf));
+  TEST("^a+bc", rs(r(B, a2), ru, r(a2b3), r(c4), rf));
+  TEST("^a*bc", rs(r(B, a2b3), ru, r(a2b3), r(c4), rf));
 
-  TEST("^ab$", rs(r(B, a1), r(b2), r(E)));
-  TEST("^a?b$", rs(r(B, a1b2), r(b2), r(E)));
-  TEST("^a+b$", rs(r(B, a1), r(a1b2), r(E)));
-  TEST("^a*b$", rs(r(B, a1b2), r(a1b2), r(E)));
+  TEST("a?bc$", rs(ru, r(a2b3), r(b3), r(c4), r(E)));
+  TEST("a+bc$", rs(ru, r(a2), r(a2b3), r(c4), r(E)));
+  TEST("a*bc$", rs(ru, r(a2b3), r(a2b3), r(c4), r(E)));
 
-  TEST("a?b?", rs(r(NF, a1b2), r(NF, b2), rf));
-  TEST("a+b?", rs(r(a1), r(NF, a1b2), rf));
-  TEST("a*b?", rs(r(NF, a1b2), r(NF, a1b2), rf));
+  TEST("^abc$", rs(r(B, a2), ru, r(b3), r(c4), r(E)));
+  TEST("^a?bc$", rs(r(B, a2b3), ru, r(b3), r(c4), r(E)));
+  TEST("^a+bc$", rs(r(B, a2), ru, r(a2b3), r(c4), r(E)));
+  TEST("^a*bc$", rs(r(B, a2b3), ru, r(a2b3), r(c4), r(E)));
 
-  TEST("a?b+", rs(r(a1b2), r(b2), r(NF, b2)));
-  TEST("a+b+", rs(r(a1), r(a1b2), r(NF, b2)));
-  TEST("a*b+", rs(r(a1b2), r(a1b2), r(NF, b2)));
+  auto const a2b3c4 = ts{ta2, tb3, tc4};
+  auto const b3c4 = ts{tb3, tc4};
 
-  auto const tb1 = t('b', 1);
-  auto const b1 = ts{tb1};
-  auto const a1b1 = ts{ta1, tb1};
+  TEST("a?b?c", rs(ru, r(a2b3c4), r(b3c4), r(c4), rf));
+  TEST("a+b?c", rs(ru, r(a2), r(a2b3c4), r(c4), rf));
+  TEST("a*b?c", rs(ru, r(a2b3c4), r(a2b3c4), r(c4), rf));
 
-  TEST("a?b*", rs(r(NF, a1b1), r(NF, b1)));
-  TEST("a+b*", rs(r(a1), r(NF, a1b2), r(NF, b2)));
-  TEST("a*b*", rs(r(NF, a1b2), r(NF, a1b2), r(NF, b2)));
+  TEST("a?b+c", rs(ru, r(a2b3), r(b3), r(b3c4), rf));
+  TEST("a+b+c", rs(ru, r(a2), r(a2b3), r(b3c4), rf));
+  TEST("a*b+c", rs(ru, r(a2b3), r(a2b3), r(b3c4), rf));
 
-  auto const tc3 = t('c', 3);
-  auto const c3 = ts{tc3};
+  auto const a2b2c4 = ts{ta2, tb2, tc4};
+  auto const b3b2c4 = ts{tb3, tb2, tc4};
 
-  TEST("a?bc", rs(r(a1b2), r(b2), r(c3), rf));
-  TEST("a+bc", rs(r(a1), r(a1b2), r(c3), rf));
-  TEST("a*bc", rs(r(a1b2), r(a1b2), r(c3), rf));
+  TEST("a?b*c", rs(ru, r(a2b2c4), r(b3b2c4), r(c4), rf));
+  TEST("a+b*c", rs(ru, r(a2), r(a2b3c4), r(b3c4), rf));
+  TEST("a*b*c", rs(ru, r(a2b3c4), r(a2b3c4), r(b3c4), rf));
 
-  TEST("^a?bc", rs(r(B, a1b2), r(b2), r(c3), rf));
-  TEST("^a+bc", rs(r(B, a1), r(a1b2), r(c3), rf));
-  TEST("^a*bc", rs(r(B, a1b2), r(a1b2), r(c3), rf));
+  auto const td5 = t('d', 5);
+  auto const d5 = ts{td5};
 
-  TEST("a?bc$", rs(r(a1b2), r(b2), r(c3), r(E)));
-  TEST("a+bc$", rs(r(a1), r(a1b2), r(c3), r(E)));
-  TEST("a*bc$", rs(r(a1b2), r(a1b2), r(c3), r(E)));
+  TEST("a?b?cd", rs(ru, r(a2b3c4), r(b3c4), r(c4), r(d5), rf));
+  TEST("a+b?cd", rs(ru, r(a2), r(a2b3c4), r(c4), r(d5), rf));
+  TEST("a*b?cd", rs(ru, r(a2b3c4), r(a2b3c4), r(c4), r(d5), rf));
 
-  TEST("^abc$", rs(r(B, a1), r(b2), r(c3), r(E)));
-  TEST("^a?bc$", rs(r(B, a1b2), r(b2), r(c3), r(E)));
-  TEST("^a+bc$", rs(r(B, a1), r(a1b2), r(c3), r(E)));
-  TEST("^a*bc$", rs(r(B, a1b2), r(a1b2), r(c3), r(E)));
+  TEST("a?b+cd", rs(ru, r(a2b3), r(b3), r(b3c4), r(d5), rf));
+  TEST("a+b+cd", rs(ru, r(a2), r(a2b3), r(b3c4), r(d5), rf));
+  TEST("a*b+cd", rs(ru, r(a2b3), r(a2b3), r(b3c4), r(d5), rf));
 
-  auto const a1b2c3 = ts{ta1, tb2, tc3};
-  auto const b2c3 = ts{tb2, tc3};
-
-  TEST("a?b?c", rs(r(a1b2c3), r(b2c3), r(c3), rf));
-  TEST("a+b?c", rs(r(a1), r(a1b2c3), r(c3), rf));
-  TEST("a*b?c", rs(r(a1b2c3), r(a1b2c3), r(c3), rf));
-
-  TEST("a?b+c", rs(r(a1b2), r(b2), r(b2c3), rf));
-  TEST("a+b+c", rs(r(a1), r(a1b2), r(b2c3), rf));
-  TEST("a*b+c", rs(r(a1b2), r(a1b2), r(b2c3), rf));
-
-  auto const a1b1c3 = ts{ta1, tb1, tc3};
-  auto const b2b1c3 = ts{tb2, tb1, tc3};
-
-  TEST("a?b*c", rs(r(a1b1c3), r(b2b1c3), r(c3), rf));
-  TEST("a+b*c", rs(r(a1), r(a1b2c3), r(b2c3), rf));
-  TEST("a*b*c", rs(r(a1b2c3), r(a1b2c3), r(b2c3), rf));
-
-  auto const td4 = t('d', 4);
-  auto const d4 = ts{td4};
-
-  TEST("a?b?cd", rs(r(a1b2c3), r(b2c3), r(c3), r(d4), rf));
-  TEST("a+b?cd", rs(r(a1), r(a1b2c3), r(c3), r(d4), rf));
-  TEST("a*b?cd", rs(r(a1b2c3), r(a1b2c3), r(c3), r(d4), rf));
-
-  TEST("a?b+cd", rs(r(a1b2), r(b2), r(b2c3), r(d4), rf));
-  TEST("a+b+cd", rs(r(a1), r(a1b2), r(b2c3), r(d4), rf));
-  TEST("a*b+cd", rs(r(a1b2), r(a1b2), r(b2c3), r(d4), rf));
-
-  TEST("a?b*cd", rs(r(a1b1c3), r(b2b1c3), r(c3), r(d4), rf));
-  TEST("a+b*cd", rs(r(a1), r(a1b2c3), r(b2c3), r(d4), rf));
-  TEST("a*b*cd", rs(r(a1b2c3), r(a1b2c3), r(b2c3), r(d4), rf));
+  TEST("a?b*cd", rs(ru, r(a2b2c4), r(b3b2c4), r(c4), r(d5), rf));
+  TEST("a+b*cd", rs(ru, r(a2), r(a2b3c4), r(b3c4), r(d5), rf));
+  TEST("a*b*cd", rs(ru, r(a2b3c4), r(a2b3c4), r(b3c4), r(d5), rf));
 
 //   auto const ta2 = t('a', 2);
 //   auto const ta3 = t('a', 3);
