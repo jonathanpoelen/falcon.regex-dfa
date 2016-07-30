@@ -133,10 +133,8 @@ int main()
   auto const rf = r(F);
   auto const ru = r(Range::None);
 
-  auto const ta1 = t('a', 1);
   auto const ta2 = t('a', 2);
   auto const a2 = ts{ta2};
-  auto const a1 = ts{ta1};
 
   TEST("", rs(ru, rf));
 
@@ -258,6 +256,78 @@ int main()
   TEST("a+b*cd", rs(ru, r(a2), r(a2b3c4), r(b3c4), r(d5), rf));
   TEST("a*b*cd", rs(ru, r(a2b3c4), r(a2b3c4), r(b3c4), r(d5), rf));
 
+
+  auto const t_2 = t('-', 2);
+  auto const ta_b2 = t('a', 'b', 2);
+  auto const tb_c2 = t('b', 'c', 2);
+  auto const tc_d2 = t('c', 'd', 2);
+  auto const tc2 = t('c', 2);
+  auto const td2 = t('d', 2);
+  auto const _2 = ts{t_2};
+  auto const a_b2 = ts{ta_b2};
+  auto const _2a_b2 = ts{t_2, ta_b2};
+  auto const a_b2_2 = ts{ta_b2, t_2};
+  auto const _2a_b2_2 = ts{t_2, ta_b2, t_2};
+  auto const a2b_c2= ts{ta2, tb_c2};
+  auto const a2b2c_d2 = ts{ta2, tb2, tc_d2};
+  auto const a2b_c2_2d2 = ts{ta2, tb_c2, t_2, td2};
+  auto const a_b2_2c2 = ts{ta_b2, t_2, tc2};
+  auto const a_b2_2c2_2= ts{ta_b2, t_2, tc2, t_2};
+  auto const a_b2_2c_d2= ts{ta_b2, t_2, tc_d2};
+  auto const a_b2_2c_d2_2 = ts{ta_b2, t_2, tc_d2, t_2};
+  auto const a_b2_2c2d2 = ts{ta_b2, t_2, tc2, td2};
+  auto const a_b2_2c2d2_2 = ts{ta_b2, t_2, tc2, td2, t_2};
+  auto const a_b2c2d2 = ts{ta_b2, tc2, td2};
+  auto const a_b2c2d2_2 = ts{ta_b2, tc2, td2, t_2};
+
+  TEST("[ab]", rs(ru, r(a2b2), rf));
+  TEST("[-]", rs(ru, r(_2), rf));
+  TEST("[a-b]", rs(ru, r(a_b2), rf));
+  TEST("[-a-b]", rs(ru, r(_2a_b2), rf));
+  TEST("[a-b-]", rs(ru, r(a_b2_2), rf));
+  TEST("[-a-b-]", rs(ru, r(_2a_b2_2), rf));
+  TEST("[ab-c]", rs(ru, r(a2b_c2), rf));
+  TEST("[abc-d]", rs(ru, r(a2b2c_d2), rf));
+  TEST("[ab-c-d]", rs(ru, r(a2b_c2_2d2), rf));
+  TEST("[a-b-c]", rs(ru, r(a_b2_2c2), rf));
+  TEST("[a-b-c-]", rs(ru, r(a_b2_2c2_2), rf));
+  TEST("[a-b-c-d]", rs(ru, r(a_b2_2c_d2), rf));
+  TEST("[a-b-c-d-]", rs(ru, r(a_b2_2c_d2_2), rf));
+  TEST("[a-b-cd]", rs(ru, r(a_b2_2c2d2), rf));
+  TEST("[a-b-cd-]", rs(ru, r(a_b2_2c2d2_2), rf));
+  TEST("[a-bcd]", rs(ru, r(a_b2c2d2), rf));
+  TEST("[a-bcd-]", rs(ru, r(a_b2c2d2_2), rf));
+
+  auto const t_a2 = t('\0', 'a'-1, 2);
+  auto const ta_2 = t('a'+1, ~re::char_int{}, 2);
+  auto const tb_2 = t('b'+1, ~re::char_int{}, 2);
+  auto const tc_2 = t('c'+1, ~re::char_int{}, 2);
+  auto const td_2 = t('d'+1, ~re::char_int{}, 2);
+  auto const te_2 = t('e'+1, ~re::char_int{}, 2);
+  auto const tf_2 = t('f'+1, ~re::char_int{}, 2);
+  auto const _a2a_2 = ts{t_a2, ta_2};
+  auto const _a2b_2 = ts{t_a2, tb_2};
+  auto const _a2b2c_2 = ts{t_a2, tb2, tc_2};
+  auto const _a2b2d_2 = ts{t_a2, tb2, td_2};
+  auto const _a2b2d2e_2 = ts{t_a2, tb2, td2, te_2};
+  auto const _a2f_2 = ts{t_a2, tf_2};
+  auto const _a2d2f_2 = ts{t_a2, td2, tf_2};
+
+  TEST("[^a]", rs(ru, r(_a2a_2), rf));
+  TEST("[^a-b]", rs(ru, r(_a2b_2), rf));
+  TEST("[^ab]", rs(ru, r(_a2b_2), rf));
+  TEST("[^ac]", rs(ru, r(_a2b2c_2), rf));
+  TEST("[^acd]", rs(ru, r(_a2b2d_2), rf));
+  TEST("[^ace]", rs(ru, r(_a2b2d2e_2), rf));
+  TEST("[^a-cd-f]", rs(ru, r(_a2f_2), rf));
+  TEST("[^a-ce-f]", rs(ru, r(_a2d2f_2), rf));
+
+//   TEST("[ab]?", rs(r(F, ab1), rf));
+//   TEST("[ab]+", rs(r(ab1), r(F, ab1)));
+//   TEST("[ab]*", rs(r(F, ab1), r(F, ab1)));
+
+
+
 //   auto const ta2 = t('a', 2);
 //   auto const ta3 = t('a', 3);
 //   auto const a1a2 = ts{ta1, ta2};
@@ -319,55 +389,6 @@ int main()
 //   TEST("^(?!a*){1,}", rs(r(BF, B, a1B, a1), r(F, a1a1)));
 //   TEST("^(?!a*){1,}b", rs(r(B, a1B, a1b2), r(a1a1b2), rf));
 //   TEST("a*^(?!b*){1,}", rs(r(a1a1b2b2B), r(a1b2b2B), r(F, b2b2)));
-//
-//   auto const _ = t('-', 1);
-//   auto const a_b = t('a', 'b', 1);
-//   auto const b_c = t('b', 'c', 1);
-//   auto const c_d = t('c', 'd', 1);
-//   auto const a = t('a', 1);
-//   auto const b = t('b', 1);
-//   auto const c = t('c', 1);
-//   auto const d = t('d', 1);
-//   auto const ab1 = ts{a, b};
-//
-//   TEST("[ab]", rs(r(ab1), rf));
-//   TEST("[-]", rs(r(ts{_}), rf));
-//   TEST("[a-b]", rs(r(ts{a_b}), rf));
-//   TEST("[-a-b]", rs(r(ts{_, a_b}), rf));
-//   TEST("[a-b-]", rs(r(ts{a_b, _}), rf));
-//   TEST("[-a-b-]", rs(r(ts{_, a_b, _}), rf));
-//   TEST("[ab-c]", rs(r(ts{a, b_c}), rf));
-//   TEST("[abc-d]", rs(r(ts{a, b, c_d}), rf));
-//   TEST("[ab-c-d]", rs(r(ts{a, b_c, _, d}), rf));
-//   TEST("[a-b-c]", rs(r(ts{a_b, _, c}), rf));
-//   TEST("[a-b-c-]", rs(r(ts{a_b, _, c, _}), rf));
-//   TEST("[a-b-c-d]", rs(r(ts{a_b, _, c_d}), rf));
-//   TEST("[a-b-c-d-]", rs(r(ts{a_b, _, c_d, _}), rf));
-//   TEST("[a-b-cd]", rs(r(ts{a_b, _, c, d}), rf));
-//   TEST("[a-b-cd-]", rs(r(ts{a_b, _, c, d, _}), rf));
-//   TEST("[a-bcd]", rs(r(ts{a_b, c, d}), rf));
-//   TEST("[a-bcd-]", rs(r(ts{a_b, c, d, _}), rf));
-//
-//   auto const _a = t('\0', 'a'-1, 1);
-//   auto const a_ = t('a'+1, ~re::char_int{}, 1);
-//   auto const b_ = t('b'+1, ~re::char_int{}, 1);
-//   auto const c_ = t('c'+1, ~re::char_int{}, 1);
-//   auto const d_ = t('d'+1, ~re::char_int{}, 1);
-//   auto const e_ = t('e'+1, ~re::char_int{}, 1);
-//   auto const f_ = t('f'+1, ~re::char_int{}, 1);
-//
-//   TEST("[^a]", rs(r(ts{_a, a_}), rf));
-//   TEST("[^a-b]", rs(r(ts{_a, b_}), rf));
-//   TEST("[^ab]", rs(r(ts{_a, b_}), rf));
-//   TEST("[^ac]", rs(r(ts{_a, b, c_}), rf));
-//   TEST("[^acd]", rs(r(ts{_a, b, d_}), rf));
-//   TEST("[^ace]", rs(r(ts{_a, b, d, e_}), rf));
-//   TEST("[^a-cd-f]", rs(r(ts{_a, f_}), rf));
-//   TEST("[^a-ce-f]", rs(r(ts{_a, d, f_}), rf));
-//
-//   TEST("[ab]?", rs(r(F, ab1), rf));
-//   TEST("[ab]+", rs(r(ab1), r(F, ab1)));
-//   TEST("[ab]*", rs(r(F, ab1), r(F, ab1)));
 //
 //   auto const tc3 = t('c', 3);
 //   auto const a1b2c3 = ts{ta1, tb2, tc3};

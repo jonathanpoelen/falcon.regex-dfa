@@ -76,7 +76,6 @@ template<S s1, S s2> constexpr Sc<s1|s2> operator | (Sc<s1>, Sc<s2>) { return {}
 
 namespace {
 #define DEFINED_VALUE_EXPR(e) constexpr Sc<S::e> e {};
-    DEFINED_VALUE_EXPR(none)
     SEQ_ENUM(DEFINED_VALUE_EXPR)
 #undef DEFINED_VALUE_EXPR
 
@@ -157,9 +156,7 @@ struct basic_scanner
     ctx.pipe.rng_end = 0;
     ctx.curr_rngs.clear();
     ctx.rngs.clear();
-    // TODO set bol
     ctx.rngs.emplace_back();
-    ctx.rngs.front().states = Range::Bol;
     next<&B::scan_single<start | first>, &B::final_start>();
 
 //     if (bool(e & escaped)) {
@@ -176,6 +173,42 @@ struct basic_scanner
     TTNS;
     ctx.rngs.emplace_back();
     ctx.rngs.back().states = Range::Final;
+  }
+
+  template<S s>
+  unsigned last_rng_index() {
+    return (s & (start | bol)) == (start | bol)
+      ? bol_rng_index<s>()
+      : bool(s & alternative)
+      ? 0u
+      : unsigned(ctx.rngs.size()-1u);
+  }
+
+  template<S s>
+  Range & last_rng() {
+    return ctx.rngs[last_rng_index<s>()];
+  }
+
+  template<S s>
+  unsigned bol_rng_index() {
+    // TODO subexpr
+    return 0u;
+  }
+
+  template<S s>
+  Range & bol_rng() {
+    return ctx.rngs[bol_rng_index<s>()];
+  }
+
+  template<S s>
+  unsigned start_rng_index() {
+    // TODO subexpr
+    return 1u;
+  }
+
+  template<S s>
+  Range & start_rng() {
+    return ctx.rngs[start_rng_index<s>()];
   }
 
   template<S s>
@@ -213,6 +246,11 @@ struct basic_scanner
   {
     TT;
 
+    if (bool(s & bol) && bool(s & alternative)) {
+      bol_rng<s>().transitions.emplace_back(e, ctx.rngs.size());
+      return ;
+    }
+
     if (bool(s & bol)) {
       bol_rng<s>().transitions.emplace_back(e, bol_rng_index<s>()+2u);
       ctx.rngs.emplace_back();
@@ -223,6 +261,15 @@ struct basic_scanner
       ctx.rngs.emplace_back();
       ctx.rngs.back().states = bool(s & eol) ? Range::Eol : Range::Normal;
       ctx.rngs[1].transitions.emplace_back(e, 2u);
+      return ;
+    }
+
+    if (bool(s & alternative)) {
+      if (!bool(s & start)) {
+        ctx.rngs.emplace_back();
+      }
+      ctx.rngs.back().states = bool(s & eol) ? Range::Eol : Range::Normal;
+      ctx.rngs[start_rng_index<s>()].transitions.emplace_back(e, ctx.rngs.size());
       return ;
     }
 
@@ -241,31 +288,6 @@ struct basic_scanner
     }
 
     last_rng<s>().transitions.emplace_back(e, ctx.rngs.size());
-  }
-
-  template<S s>
-  unsigned last_rng_index() {
-    return (s & (start | bol)) == (start | bol)
-      ? bol_rng_index<s>()
-      : bool(s & alternative)
-      ? 0u
-      : unsigned(ctx.rngs.size()-1u);
-  }
-
-  template<S s>
-  Range & last_rng() {
-    return ctx.rngs[last_rng_index<s>()];
-  }
-
-  template<S s>
-  unsigned bol_rng_index() {
-    // TODO subexpr
-    return 0u;
-  }
-
-  template<S s>
-  Range & bol_rng() {
-    return ctx.rngs[bol_rng_index<s>()];
   }
 
   template<S s>
@@ -461,6 +483,11 @@ struct basic_scanner
   void eval_quanti_or()
   {
     TT;
+
+    if (bool(s & start)) {
+      last_rng<s>().states |= Range::Final;
+    }
+
     if (bool(s & accu)) {
       auto & e = last_rng<s>().transitions.back().e;
       if (bool(s & reuse)) {
@@ -485,7 +512,18 @@ struct basic_scanner
       ctx.pipe.rng_end = unsigned(ctx.rngs.size());
     }
 
-    return next<&B::scan_single<start + alternative>>();
+    return next<
+      &B::scan_single<start + alternative>
+    , &B::final_quanti_or<s>>();
+  }
+
+  template<S s>
+  void final_quanti_or()
+  {
+    TT;
+    ctx.rngs.emplace_back();
+    ctx.rngs.back().states = bool(s & eol) ? Range::Eol : Range::Final;
+    start_rng<s>().states |= Range::Final;
   }
 
   template<S s, act_t next_act>
@@ -641,85 +679,127 @@ struct basic_scanner
         if (bool(s & bracket_reversed)) {
           return error();
         }
-        return eval_empty_bracket_close<s>();
+        return next<
+          &B::scan_quanti<s - bracket_reversed>
+        , &B::final_bracket_close<s - bracket_reversed>>();
       case '-':
         ctx.bracket.push_back(c);
-        return next<&B::scan_in_bracket_a<s>>();
+        return next<&B::scan_in_bracket_single<s>>();
       case '\\':
         return next<
-          &B::scan_in_escape<s, &B::scan_in_bracket_a<s>>
+          &B::scan_in_escape<s, &B::scan_in_bracket_single<s>>
         , &B::error_end_of_string>();
       default :
         ctx.bracket.push_back(c);
-        return next<&B::scan_in_bracket_a<s>, &B::error>();
+        return next<&B::scan_in_bracket_single_or_start_range<s>, &B::error>();
     }
   }
 
   template<S s>
-  void scan_in_bracket_a()
+  void scan_in_bracket_single()
   {
     TT;
     switch (c) {
-      case ']': return eval_bracket_close<s>();
+      case ']':
+        return eval_bracket_close<s>();
       case '\\':
         return next<
-          &B::scan_in_escape<s, &B::scan_in_bracket_b<s>>
+          &B::scan_in_escape<s, &B::scan_in_bracket_single_or_start_range<s>>
         , &B::error_end_of_string>();
+      case '-':
+        ctx.bracket.push_back(c);
+        return next<&B::scan_in_bracket_single<s>, &B::error>();
       default :
         ctx.bracket.push_back(c);
-        return next<&B::scan_in_bracket_b<s>, &B::error>();
+        return next<&B::scan_in_bracket_single_or_start_range<s>, &B::error>();
     }
   }
 
   template<S s>
-  void scan_in_bracket_b()
+  void scan_in_bracket_single_or_start_range()
   {
     TT;
     switch (c) {
-      case '-': return scan_in_bracket_r<s>();
-      case ']': return eval_bracket_close<s>();
+      case '-':
+        return next<
+          &B::scan_in_bracket_range_right<s>
+        , &B::final_bracket_close<s - bracket_reversed>>();
+      case ']':
+        return eval_bracket_close<s>();
       case '\\':
         return next<
-          &B::scan_in_escape<s, &B::scan_in_bracket_a<s>>
+          &B::scan_in_escape<s, &B::scan_in_bracket_single<s>>
         , &B::error_end_of_string>();
       default :
         ctx.bracket.push_back(c);
-        return next<&B::scan_in_bracket_a<s>, &B::error>();
+        return next<&B::scan_in_bracket_single_or_start_range<s>, &B::error>();
     }
   }
 
   template<S s>
-  void scan_in_bracket_r()
+  void scan_in_bracket_range_right()
   {
     TT;
     switch (c) {
-      case ']': return eval_bracket_close<s>();
+      case ']':
+        ctx.bracket.push_back('-');
+        return eval_bracket_close<s>();
       case '\\':
         return next<
-          &B::scan_in_escape<s, &B::scan_in_bracket_a<s>>
+          &B::scan_in_escape<s, &B::scan_in_bracket_single<s>>
         , &B::error_end_of_string>();
       default :
         ctx.bracket.back().r = c;
-        return next<&B::scan_in_bracket_a<s>, &B::error>();
+        return next<&B::scan_in_bracket_single<s>, &B::error>();
     }
   }
 
   template<S s>
   void eval_bracket_close()
   {
+    TT;
     if (bool(s & bracket_reversed)) {
       reverse_bracket();
     }
 
-    return eval_empty_bracket_close<s>();
+    // TODO add to rng
+
+    return next<
+      &B::scan_quanti<s - bracket_reversed>
+    , &B::final_bracket_close<s - bracket_reversed>>();
   }
 
   template<S s>
-  void eval_empty_bracket_close()
+  void final_bracket_close()
   {
-    return next<
-      &B::scan_quanti<s - bracket_reversed>
-    , &B::push_event<s - bracket_reversed>>();
+    TT;
+    if (bool(s & accu)) {
+      if (bool(s & reuse)) {
+        ctx.curr_rngs.pop_back();
+      }
+      for (auto i : ctx.curr_rngs) {
+        auto & ts = ctx.rngs[i].transitions;
+        for (auto & e : ctx.bracket.es) {
+          ts.emplace_back(e, ctx.rngs.size());
+        }
+      }
+    }
+
+    if (bool(s & first)) {
+      ctx.rngs.emplace_back();
+    }
+
+    if (!bool(s & (bol | eol))) {
+      last_rng<s>().states = Range::Normal;
+    }
+
+    auto & ts = last_rng<s>().transitions;
+    for (auto & e : ctx.bracket.es) {
+      ts.emplace_back(e, ctx.rngs.size());
+    }
+
+    ctx.rngs.emplace_back();
+    ctx.rngs.back().states = Range::Final;
   }
 
 
@@ -814,6 +894,10 @@ struct basic_scanner
       // TODO
     }
 
+    if (!bool(s & bol)) {
+      ctx.rngs.front().states |= Range::Bol;
+    }
+
     return next<
       &B::scan_single<s + bol>
     , &B::final_bol_eol<s + bol>>();
@@ -857,11 +941,22 @@ struct basic_scanner
     else if (bool(s & eol)) {
       last_rng<s>().states |= Range::Eol;
     }
+    if (bool(s & bol) && bool(s & start)) {
+      start_rng<s>().states |= Range::Final;
+    }
 //     switch (s & boleol) {
 //       case bol: ctx.rngs.back().states |= Range::Bol; break;
 //       case eol: ctx.rngs.back().states |= Range::Eol; break;
 //       default : ctx.rngs.back().states |= Range::Bol | Range::Eol; break;
 //     }
+
+    if (bool(s & alternative)) {
+      switch (s & (boleol)) {
+        case bol: start_rng<s>().states |= Range::Final; break;
+        case eol: start_rng<s>().states |= Range::Eol; break;
+        default : start_rng<s>().states |= Range::Empty; break;
+      }
+    }
   }
 
   static bool is_ascii_alnum(char_int c)
