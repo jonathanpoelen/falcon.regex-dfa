@@ -45,14 +45,18 @@ namespace
 
   template<unsigned n>
   auto inc_state(falcon::regex::scanner_ctx & sctx)
-  { return [&sctx](auto &) { inc_enum(sctx.elems.back().state, n); }; }
+  { return [&sctx](auto &) { inc_enum(sctx.elems.back(), n); }; }
 }
 
 falcon::regex::scanner_ctx
 falcon::regex::scan(char const * s)
 {
   falcon::regex::scanner_ctx sctx;
-  sctx.elems.push_back({regex_state::start, 0});
+  sctx.elems.emplace_back(regex_state::start);
+  // first alternation
+  sctx.params.emplace_back();
+  // last alternation
+  sctx.params.emplace_back();
 
   using x3::_attr;
   using x3::_pass;
@@ -60,37 +64,33 @@ falcon::regex::scan(char const * s)
   using param_type = falcon::regex::scanner_ctx::param_type;
 
 #define SSt(name) \
-  auto name = [&sctx](auto &) { sctx.elems.push_back({regex_state::name, 0}); }
-
-#define SSta(name)                  \
-  auto name = [&sctx](auto & ctx) { \
-    sctx.elems.push_back({          \
-      regex_state::name,            \
-      param_type(_attr(ctx))        \
-    });                             \
-  }
-
-  SSta(single1);
+  auto name = [&sctx](auto &) { sctx.elems.emplace_back(regex_state::name); }
 
   SSt(bol);
   SSt(eol);
   SSt(any);
 
+  auto single1 = [&sctx](auto & ctx) {
+    sctx.elems.emplace_back(regex_state::single1);
+    sctx.params.emplace_back(param_type(_attr(ctx)));
+  };
+
   auto repetition = [&sctx](auto & ctx) {
-    inc_enum(sctx.elems.back().state, detail::repetition);
-    sctx.params.push_back(_attr(ctx));
+    inc_enum(sctx.elems.back(), detail::repetition);
+    sctx.params.emplace_back(_attr(ctx));
   };
 
   auto interval = [&sctx](auto & ctx) {
-    inc_enum(sctx.elems.back().state, 1);
-    sctx.params.push_back(_attr(ctx));
+    inc_enum(sctx.elems.back(), 1);
+    sctx.params.emplace_back(_attr(ctx));
   };
 
   param_type bracket_pos;
 
   auto bracket_open = [&sctx, &bracket_pos](auto &) {
     bracket_pos = param_type(sctx.params.size());
-    sctx.elems.push_back({regex_state::bracket, bracket_pos});
+    sctx.elems.emplace_back(regex_state::bracket);
+    sctx.params.emplace_back();
   };
 
   auto bracket_close = [&sctx, &bracket_pos](auto &) {
@@ -98,12 +98,12 @@ falcon::regex::scan(char const * s)
   };
 
   auto to_bracket_reverse = [&sctx](auto &) {
-    sctx.elems.back().state = regex_state::bracket_reverse;
+    sctx.elems.back() = regex_state::bracket_reverse;
   };
 
   auto add_bracket_char = [&sctx](auto & ctx) {
-    sctx.params.push_back(_attr(ctx));
-    sctx.params.push_back(_attr(ctx));
+    sctx.params.emplace_back(_attr(ctx));
+    sctx.params.emplace_back(_attr(ctx));
   };
 
   auto add_bracket_range = [&sctx](auto & ctx) {
@@ -117,22 +117,29 @@ falcon::regex::scan(char const * s)
       case 'd':
       case 's':
       // TODO
-        sctx.elems.push_back({regex_state::escaped, param_type(_attr(ctx))});
+        sctx.elems.emplace_back(regex_state::escaped);
         break;
       default:
-        sctx.elems.push_back({regex_state::single1, param_type(_attr(ctx))});
+        sctx.elems.emplace_back(regex_state::single1);
         break;
     }
+    sctx.params.emplace_back(_attr(ctx));
   };
 
   param_type first_altern = 0;
 
   auto open = [&sctx, &first_altern](auto &) {
-    sctx.stack_params.push_back(first_altern);
-    sctx.stack_params.push_back(param_type(sctx.elems.size()));
+    sctx.stack_params.emplace_back(first_altern);
+    sctx.stack_params.emplace_back(sctx.elems.size());
+    sctx.stack_params.emplace_back(sctx.params.size());
     first_altern = param_type(sctx.stack_params.size());
-    sctx.elems.push_back({regex_state::open, param_type(sctx.params.size())});
-    sctx.params.push_back(0);
+    sctx.elems.emplace_back(regex_state::open);
+    // idx close
+    sctx.params.emplace_back();
+    // first alternation
+    sctx.params.emplace_back();
+    // last alternation
+    sctx.params.emplace_back();
   };
 
   auto close = [&sctx, &first_altern](auto & ctx) {
@@ -140,31 +147,38 @@ falcon::regex::scan(char const * s)
       _pass(ctx) = false;
       return ;
     }
-    sctx.elems.push_back({regex_state::close, param_type(sctx.params.size())});
-    auto const i = sctx.stack_params[first_altern - 1u];
-    sctx.params[sctx.elems[i].idx_or_ch] = param_type(sctx.elems.size());
-    sctx.params.push_back(param_type(i));
+    auto const iparam = sctx.stack_params[first_altern - 1u];
+    auto const ielem = sctx.stack_params[first_altern - 2u];
+    // idx close
+    sctx.params[iparam] = param_type(sctx.elems.size());
+    // idx open
+    sctx.params.emplace_back(ielem);
+    sctx.params.emplace_back(iparam);
+    sctx.params[iparam + 1u] = param_type(sctx.params.size());
+    sctx.elems.emplace_back(regex_state::close);
 
-    param_type previous_first_altern = sctx.stack_params[first_altern - 2u];
+    param_type previous_first_altern = sctx.stack_params[first_altern - 3u];
     if (first_altern != sctx.stack_params.size()) {
-      inc_enum(sctx.elems[i].state, 1);
+      inc_enum(sctx.elems[ielem], 1);
       sctx.params.insert(
         sctx.params.end(),
         sctx.stack_params.begin() + first_altern,
         sctx.stack_params.end()
       );
-      sctx.stack_params.resize(first_altern - 2u);
+      sctx.stack_params.resize(first_altern - 3u);
     }
     else {
       sctx.stack_params.pop_back();
       sctx.stack_params.pop_back();
     }
+
+    sctx.params[iparam + 2u] = param_type(sctx.params.size());
     first_altern = previous_first_altern;
   };
 
   auto alternation = [&sctx](auto &) {
-    sctx.stack_params.push_back(param_type(sctx.elems.size()));
-    sctx.elems.push_back({regex_state::alternation, 0});
+    sctx.stack_params.emplace_back(sctx.elems.size() + 1);
+    sctx.elems.emplace_back(regex_state::alternation);
   };
 
 
@@ -221,14 +235,16 @@ falcon::regex::scan(char const * s)
   x3::parse(s, s+strlen(s), parser);
 
   if (sctx.stack_params.size()) {
-    inc_enum(sctx.elems[0].state, 1);
+    inc_enum(sctx.elems[0], 1);
+    sctx.params[0] = param_type(sctx.params.size());
+    sctx.params[1] = param_type(sctx.params.size() + sctx.stack_params.size());
     sctx.params.insert(
       sctx.params.end(),
       sctx.stack_params.begin(),
       sctx.stack_params.end()
     );
   }
-  sctx.elems.push_back({regex_state::terminate, 0});
+  sctx.elems.push_back(regex_state::terminate);
 
   return sctx;
 }

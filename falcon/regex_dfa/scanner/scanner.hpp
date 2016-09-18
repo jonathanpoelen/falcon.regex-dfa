@@ -45,13 +45,13 @@ namespace detail { namespace {
     closure1,
     option,
     brace0, // {,m}
-    repetition,
+    repetition, // {n}
     brace1, // {n,}
     interval, // {n,m}
   };
 } }
 
-enum class regex_state
+enum class regex_state : char
 {
   start,
   start_alternation,
@@ -69,7 +69,7 @@ enum class regex_state
   single1_closure1,
   single1_option,
   single1_brace0, // {,m}
-  single1_repetition,
+  single1_repetition, // {n}
   single1_brace1, // {n,}
   single1_interval, // {n,m}
 
@@ -78,7 +78,7 @@ enum class regex_state
   escaped_closure1,
   escaped_option,
   escaped_brace0, // {,m}
-  escaped_repetition,
+  escaped_repetition, // {n}
   escaped_brace1, // {n,}
   escaped_interval, // {n,m}
 
@@ -87,7 +87,7 @@ enum class regex_state
   any_closure1,
   any_option,
   any_brace0, // {,m}
-  any_repetition,
+  any_repetition, // {n}
   any_brace1, // {n,}
   any_interval, // {n,m}
 
@@ -96,7 +96,7 @@ enum class regex_state
   bracket_closure1,
   bracket_option,
   bracket_brace0, // {,m}
-  bracket_repetition,
+  bracket_repetition, // {n}
   bracket_brace1, // {n,}
   bracket_interval, // {n,m}
 
@@ -105,7 +105,7 @@ enum class regex_state
   bracket_reverse_closure1,
   bracket_reverse_option,
   bracket_reverse_brace0, // {,m}
-  bracket_reverse_repetition,
+  bracket_reverse_repetition, // {n}
   bracket_reverse_brace1, // {n,}
   bracket_reverse_interval, // {n,m}
 
@@ -114,7 +114,7 @@ enum class regex_state
   close_closure1,
   close_option,
   close_brace0, // {,m}
-  close_repetition,
+  close_repetition, // {n}
   close_brace1, // {n,}
   close_interval, // {n,m}
 
@@ -199,16 +199,10 @@ struct scanner_ctx
   // TODO char_int or size_type
   using param_type = uint32_t;
 
-  struct elem_t
-  {
-    regex_state state;
-    param_type idx_or_ch;
-  };
-
   // idx_alternation... [ idx_first_altern, elems.size, idx_alternation... ] ...
   std::vector<param_type> stack_params;
   std::vector<param_type> params;
-  std::vector<elem_t> elems;
+  std::vector<regex_state> elems;
 };
 
 scanner_ctx scan(char const * s);
