@@ -61,7 +61,7 @@ enum class regex_state
   open_alternation,
   open_nocap,
   open_nocap_alternation,
-  alternation, 
+  alternation,
   terminate,
 
   single1,
@@ -205,8 +205,8 @@ struct scanner_ctx
     param_type idx_or_ch;
   };
 
-  std::vector<param_type> alternation_list;
-  std::vector<size_type> idx_opener_list;
+  // idx_alternation... [ idx_first_altern, elems.size, idx_alternation... ] ...
+  std::vector<param_type> stack_params;
   std::vector<param_type> params;
   std::vector<elem_t> elems;
 };

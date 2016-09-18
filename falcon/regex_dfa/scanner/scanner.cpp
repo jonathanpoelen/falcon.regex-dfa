@@ -128,42 +128,42 @@ falcon::regex::scan(char const * s)
   param_type first_altern = 0;
 
   auto open = [&sctx, &first_altern](auto &) {
-    sctx.idx_opener_list.push_back(sctx.elems.size());
+    sctx.stack_params.push_back(first_altern);
+    sctx.stack_params.push_back(param_type(sctx.elems.size()));
+    first_altern = param_type(sctx.stack_params.size());
     sctx.elems.push_back({regex_state::open, param_type(sctx.params.size())});
     sctx.params.push_back(0);
-    sctx.alternation_list.push_back(first_altern);
-    first_altern = param_type(sctx.alternation_list.size());
   };
 
   auto close = [&sctx, &first_altern](auto & ctx) {
-    if (sctx.idx_opener_list.empty()) {
+    if (first_altern == 0) {
       _pass(ctx) = false;
       return ;
     }
     sctx.elems.push_back({regex_state::close, param_type(sctx.params.size())});
-    auto const i = sctx.idx_opener_list.back();
-    sctx.idx_opener_list.pop_back();
+    auto const i = sctx.stack_params[first_altern - 1u];
     sctx.params[sctx.elems[i].idx_or_ch] = param_type(sctx.elems.size());
     sctx.params.push_back(param_type(i));
 
-    if (first_altern != sctx.alternation_list.size()) {
-      param_type previous_first_altern = sctx.alternation_list[first_altern - 1];
+    param_type previous_first_altern = sctx.stack_params[first_altern - 2u];
+    if (first_altern != sctx.stack_params.size()) {
       inc_enum(sctx.elems[i].state, 1);
       sctx.params.insert(
         sctx.params.end(),
-        sctx.alternation_list.begin() + first_altern,
-        sctx.alternation_list.end()
+        sctx.stack_params.begin() + first_altern,
+        sctx.stack_params.end()
       );
-      sctx.alternation_list.resize(first_altern - 1);
-      first_altern = previous_first_altern;
+      sctx.stack_params.resize(first_altern - 2u);
     }
     else {
-      sctx.alternation_list.pop_back();
+      sctx.stack_params.pop_back();
+      sctx.stack_params.pop_back();
     }
+    first_altern = previous_first_altern;
   };
 
   auto alternation = [&sctx](auto &) {
-    sctx.alternation_list.push_back(param_type(sctx.elems.size()));
+    sctx.stack_params.push_back(param_type(sctx.elems.size()));
     sctx.elems.push_back({regex_state::alternation, 0});
   };
 
@@ -220,12 +220,12 @@ falcon::regex::scan(char const * s)
   // TODO check error
   x3::parse(s, s+strlen(s), parser);
 
-  if (sctx.alternation_list.size()) {
+  if (sctx.stack_params.size()) {
     inc_enum(sctx.elems[0].state, 1);
     sctx.params.insert(
       sctx.params.end(),
-      sctx.alternation_list.begin(),
-      sctx.alternation_list.end()
+      sctx.stack_params.begin(),
+      sctx.stack_params.end()
     );
   }
   sctx.elems.push_back({regex_state::terminate, 0});
