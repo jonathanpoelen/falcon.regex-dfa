@@ -62,6 +62,7 @@ set(SRC falcon/regex_dfa/)
 set(
   SRC_RE_SCANNER
   ${SRC}/scanner/scanner.cpp
+  ${SRC}/scanner/scanner.hpp
 )
 add_library(re_scanner ${SRC_RE_SCANNER})
 

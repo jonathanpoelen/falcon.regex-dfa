@@ -29,6 +29,7 @@ SOFTWARE.
 #pragma once
 
 #include <vector>
+#include <iosfwd>
 #include <cstdint>
 
 
@@ -53,9 +54,15 @@ namespace detail { namespace {
 enum class regex_state
 {
   start,
+  start_alternation,
   bol,
   eol,
   open,
+  open_alternation,
+  open_nocap,
+  open_nocap_alternation,
+  alternation, 
+  terminate,
 
   single1,
   single1_closure0,
@@ -114,25 +121,93 @@ enum class regex_state
   NB
 };
 
+template<class Ch, class Tr>
+std::basic_ostream<Ch, Tr> &
+operator <<(std::basic_ostream<Ch, Tr> & os, regex_state const & st) {
+  constexpr char const * names[]{
+    "start",
+    "start_alternation",
+    "bol",
+    "eol",
+    "open",
+    "open_alternation",
+    "open_nocap",
+    "open_nocap_alternation",
+    "alternation",
+    "terminate",
+
+    "single1",
+    "single1_closure0",
+    "single1_closure1",
+    "single1_option",
+    "single1_brace0",
+    "single1_repetition",
+    "single1_brace1",
+    "single1_interval",
+
+    "escaped",
+    "escaped_closure0",
+    "escaped_closure1",
+    "escaped_option",
+    "escaped_brace0",
+    "escaped_repetition",
+    "escaped_brace1",
+    "escaped_interval",
+
+    "any",
+    "any_closure0",
+    "any_closure1",
+    "any_option",
+    "any_brace0",
+    "any_repetition",
+    "any_brace1",
+    "any_interval",
+
+    "bracket",
+    "bracket_closure0",
+    "bracket_closure1",
+    "bracket_option",
+    "bracket_brace0",
+    "bracket_repetition",
+    "bracket_brace1",
+    "bracket_interval",
+
+    "bracket_reverse",
+    "bracket_reverse_closure0",
+    "bracket_reverse_closure1",
+    "bracket_reverse_option",
+    "bracket_reverse_brace0",
+    "bracket_reverse_repetition",
+    "bracket_reverse_brace1",
+    "bracket_reverse_interval",
+
+    "close",
+    "close_closure0",
+    "close_closure1",
+    "close_option",
+    "close_brace0",
+    "close_repetition",
+    "close_brace1",
+    "close_interval",
+  };
+  static_assert(sizeof(names)/sizeof(names[0]) == static_cast<std::size_t>(regex_state::NB), "");
+  return os << names[static_cast<unsigned>(st)];
+}
+
 struct scanner_ctx
 {
+  // TODO char_int or size_type
+  using param_type = uint32_t;
+
   struct elem_t
   {
     regex_state state;
-    // TODO char_int or size_type
-    uint32_t idx_or_ch;
+    param_type idx_or_ch;
   };
 
-  struct alternations_t
-  {
-    size_type ibeg;
-    size_type iend;
-  };
-
-  std::vector<alternations_t> alternations_list;
+  std::vector<param_type> alternation_list;
   std::vector<size_type> idx_opener_list;
-  // TODO char_int or size_type
-  std::vector<uint32_t> params;
+  std::vector<param_type> params;
   std::vector<elem_t> elems;
 };
 

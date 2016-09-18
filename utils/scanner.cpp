@@ -6,8 +6,12 @@ namespace re = falcon::regex;
 void print_scanner(re::scanner_ctx const & ctx)
 {
   for (auto && e : ctx.elems) {
-    std::cout << "{ " << static_cast<unsigned>(e.state) << "  " << e.idx_or_ch << " }\n";
+    std::cout << "{ " << e.state << "  " << e.idx_or_ch << " }\n";
   }
+  for (auto && e : ctx.params) {
+    std::cout << e << ", ";
+  }
+  std::cout << "\n";
 }
 
 int main(int, char ** av) {

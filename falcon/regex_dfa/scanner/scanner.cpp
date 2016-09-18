@@ -53,15 +53,11 @@ falcon::regex::scan(char const * s)
 {
   falcon::regex::scanner_ctx sctx;
   sctx.elems.push_back({regex_state::start, 0});
-  sctx.alternations_list.push_back({0, 0});
 
   using x3::_attr;
   using x3::_pass;
-//   using x3::attr;
-//   using x3::phrase_parse;
-//   using x3::ascii::space;
 
-  using param_type = uint32_t;
+  using param_type = falcon::regex::scanner_ctx::param_type;
 
 #define SSt(name) \
   auto name = [&sctx](auto &) { sctx.elems.push_back({regex_state::name, 0}); }
@@ -93,12 +89,12 @@ falcon::regex::scan(char const * s)
   param_type bracket_pos;
 
   auto bracket_open = [&sctx, &bracket_pos](auto &) {
-    bracket_pos = sctx.params.size();
+    bracket_pos = param_type(sctx.params.size());
     sctx.elems.push_back({regex_state::bracket, bracket_pos});
   };
 
   auto bracket_close = [&sctx, &bracket_pos](auto &) {
-    sctx.params[bracket_pos] = sctx.params.size();
+    sctx.params[bracket_pos] = param_type(sctx.params.size());
   };
 
   auto to_bracket_reverse = [&sctx](auto &) {
@@ -129,14 +125,17 @@ falcon::regex::scan(char const * s)
     }
   };
 
+  param_type first_altern = 0;
 
-  auto open = [&sctx](auto &) {
+  auto open = [&sctx, &first_altern](auto &) {
     sctx.idx_opener_list.push_back(sctx.elems.size());
     sctx.elems.push_back({regex_state::open, param_type(sctx.params.size())});
     sctx.params.push_back(0);
+    sctx.alternation_list.push_back(first_altern);
+    first_altern = param_type(sctx.alternation_list.size());
   };
 
-  auto close = [&sctx](auto & ctx) {
+  auto close = [&sctx, &first_altern](auto & ctx) {
     if (sctx.idx_opener_list.empty()) {
       _pass(ctx) = false;
       return ;
@@ -144,12 +143,33 @@ falcon::regex::scan(char const * s)
     sctx.elems.push_back({regex_state::close, param_type(sctx.params.size())});
     auto const i = sctx.idx_opener_list.back();
     sctx.idx_opener_list.pop_back();
-    sctx.params[sctx.elems[i].idx_or_ch] = sctx.elems.size();
-    sctx.params.push_back(i);
+    sctx.params[sctx.elems[i].idx_or_ch] = param_type(sctx.elems.size());
+    sctx.params.push_back(param_type(i));
+
+    if (first_altern != sctx.alternation_list.size()) {
+      param_type previous_first_altern = sctx.alternation_list[first_altern - 1];
+      inc_enum(sctx.elems[i].state, 1);
+      sctx.params.insert(
+        sctx.params.end(),
+        sctx.alternation_list.begin() + first_altern,
+        sctx.alternation_list.end()
+      );
+      sctx.alternation_list.resize(first_altern - 1);
+      first_altern = previous_first_altern;
+    }
+    else {
+      sctx.alternation_list.pop_back();
+    }
   };
 
-  constexpr auto C = x3::ascii::char_;
-  constexpr auto u16 = boost::spirit::x3::uint16;
+  auto alternation = [&sctx](auto &) {
+    sctx.alternation_list.push_back(param_type(sctx.elems.size()));
+    sctx.elems.push_back({regex_state::alternation, 0});
+  };
+
+
+  auto const C = x3::ascii::char_;
+  auto const u16 = boost::spirit::x3::uint16;
 
   auto quanti_parser
   = C('*')[inc_state<detail::closure0>(sctx)]
@@ -164,7 +184,7 @@ falcon::regex::scan(char const * s)
   ;
 
   auto mk_bracket_char_parser = [](auto a) {
-    constexpr auto C = x3::ascii::char_;
+    auto const C = x3::ascii::char_;
     return (
       (C('\'') >> C[a])
     | (C - C(']'))[a]
@@ -184,7 +204,8 @@ falcon::regex::scan(char const * s)
   auto parser = *
   ( C('^')[bol]
   | C('$')[eol]
-  | (C('(')[open] >> -(C('?') >> (C(':') | C('!')))/*[TODO]*/)
+  | C('|')[alternation]
+  | (C('(')[open] >> -(C('?') >> C('!')[inc_state<1>(sctx)]))
   | ( (
         (C('\\') >> C[escaped])
       | (C('.')[any])
@@ -198,6 +219,16 @@ falcon::regex::scan(char const * s)
 
   // TODO check error
   x3::parse(s, s+strlen(s), parser);
+
+  if (sctx.alternation_list.size()) {
+    inc_enum(sctx.elems[0].state, 1);
+    sctx.params.insert(
+      sctx.params.end(),
+      sctx.alternation_list.begin(),
+      sctx.alternation_list.end()
+    );
+  }
+  sctx.elems.push_back({regex_state::terminate, 0});
 
   return sctx;
 }
