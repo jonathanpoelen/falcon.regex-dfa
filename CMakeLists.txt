@@ -37,35 +37,42 @@ include_directories(include/)
 set(SRC falcon/regex_dfa/)
 
 
-set(
-  SRC_RE_PRINT
-  ${SRC}/print_automaton.cpp
-  ${SRC}/print_automaton.hpp
-)
-add_library(re_print ${SRC_RE_PRINT})
-# link_libraries(re_print)
+# set(
+#   SRC_RE_PRINT
+#   ${SRC}/print_automaton.cpp
+#   ${SRC}/print_automaton.hpp
+# )
+# add_library(re_print ${SRC_RE_PRINT})
+# # link_libraries(re_print)
+#
+# set(
+#   SRC_RE_SCAN3
+#   ${SRC}/scan3.cpp
+#   ${SRC}/scan.hpp
+# )
+# add_library(re_scan3 ${SRC_RE_SCAN3})
+#
+# set(
+#   SRC_RE_MATCH
+#   ${SRC}/match.cpp
+#   ${SRC}/match.hpp
+# )
+# add_library(re_match ${SRC_RE_MATCH})
 
 set(
-  SRC_RE_SCAN3
-  ${SRC}/scan3.cpp
-  ${SRC}/scan.hpp
+  SRC_RE_SCANNER
+  ${SRC}/scanner/scanner.cpp
 )
-add_library(re_scan3 ${SRC_RE_SCAN3})
-
-set(
-  SRC_RE_MATCH
-  ${SRC}/match.cpp
-  ${SRC}/match.hpp
-)
-add_library(re_match ${SRC_RE_MATCH})
+add_library(re_scanner ${SRC_RE_SCANNER})
 
 # source_group(libs FILES ${SRC_SCAN})
 
 
 # Utilities
-add_executable(match utils/match.cpp)
+# add_executable(match utils/match.cpp)
 # add_executable(re_scan utils/scan.cpp)
-add_executable(new_scan utils/scan2.cpp)
+# add_executable(new_scan utils/scan2.cpp)
+add_executable(scanner utils/scanner.cpp)
 # add_executable(re_scan2 utils/scan2.cpp)
 # add_executable(re_scan_reduce utils/scan_reduce.cpp)
 
@@ -79,7 +86,7 @@ function(add_test_executable name)
 endfunction()
 
 # add_test_executable(scan)
-add_test_executable(scan3)
+# add_test_executable(scan3)
 # add_test_executable(match)
 
 enable_testing()
@@ -94,13 +101,15 @@ endfunction()
 
 
 # set(EXE_SCAN re_scan test_scan)
-set(EXE_SCAN3 new_scan test_scan3 match)
-set(EXE_MATCH match)
+# set(EXE_SCAN3 new_scan test_scan3 match)
+set(EXE_SCANNER scanner)
+# set(EXE_MATCH match)
 # set(EXE_MATCH re_match test_match)
 
 # link_library(re_match ${EXE_MATCH})
 # link_library(lib_scan ${EXE_SCAN} ${EXE_MATCH})
 # link_library(re_print ${EXE_SCAN} ${EXE_MATCH} new_scan test_scan3)
-link_library(re_scan3 ${EXE_SCAN3})
-link_library(re_print ${EXE_SCAN3})
-link_library(re_match ${EXE_MATCH})
+# link_library(re_scan3 ${EXE_SCAN3})
+# link_library(re_print ${EXE_SCAN3})
+# link_library(re_match ${EXE_MATCH})
+link_library(re_scanner ${EXE_SCANNER})
