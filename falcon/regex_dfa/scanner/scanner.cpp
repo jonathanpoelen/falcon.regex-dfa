@@ -165,14 +165,11 @@ falcon::regex::scan(char const * s)
         sctx.stack_params.begin() + first_altern,
         sctx.stack_params.end()
       );
-      sctx.stack_params.resize(first_altern - 3u);
-    }
-    else {
-      sctx.stack_params.pop_back();
-      sctx.stack_params.pop_back();
     }
 
     sctx.params[iparam + 2u] = param_type(sctx.params.size());
+    sctx.stack_params.resize(first_altern - 3u);
+
     first_altern = previous_first_altern;
   };
 
@@ -219,32 +216,36 @@ falcon::regex::scan(char const * s)
   ( C('^')[bol]
   | C('$')[eol]
   | C('|')[alternation]
-  | (C('(')[open] >> -(C('?') >> C('!')[inc_state<1>(sctx)]))
+  | (C('(')[open] >> -(C('?') >> (C('!')[inc_state<1>(sctx)])))
   | ( (
         (C('\\') >> C[escaped])
       | (C('.')[any])
       | (C(')')[close])
       | (bracket_parser)
-      | (C - (C('-') | C('+') | C('?') | C('{')))[single1]
+      | -(C('*') | C('+') | C('?') | C('{')) >> C[single1]
       )
       >> -quanti_parser
     )
   );
 
-  // TODO check error
-  x3::parse(s, s+strlen(s), parser);
-
-  if (sctx.stack_params.size()) {
-    inc_enum(sctx.elems[0], 1);
-    sctx.params[0] = param_type(sctx.params.size());
-    sctx.params[1] = param_type(sctx.params.size() + sctx.stack_params.size());
-    sctx.params.insert(
-      sctx.params.end(),
-      sctx.stack_params.begin(),
-      sctx.stack_params.end()
-    );
+  auto send = s+strlen(s);
+  auto res = x3::parse(s, send, parser);
+  if (!res || s != send || first_altern) {
+    sctx = {};
   }
-  sctx.elems.push_back(regex_state::terminate);
+  else {
+    if (sctx.stack_params.size()) {
+      inc_enum(sctx.elems[0], 1);
+      sctx.params[0] = param_type(sctx.params.size());
+      sctx.params[1] = param_type(sctx.params.size() + sctx.stack_params.size());
+      sctx.params.insert(
+        sctx.params.end(),
+        sctx.stack_params.begin(),
+        sctx.stack_params.end()
+      );
+    }
+    sctx.elems.push_back(regex_state::terminate);
+  }
 
   return sctx;
 }

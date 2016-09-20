@@ -39,7 +39,7 @@ void print_scanner(re::scanner_ctx const & ctx)
         ++pit;
         break;
       case 7:
-        std::cout << "  {" << *pit << ", " << *(pit + 1) << "}";
+        std::cout << "  {" << *pit << ", " << pit[1u] << "}";
         pit += 2;
         break;
     }
@@ -47,26 +47,33 @@ void print_scanner(re::scanner_ctx const & ctx)
 
   unsigned n = 0;
 
+  for (auto && e : ctx.params) {
+    std::cout << e << ", ";
+  }
+  std::cout << "\n";
   for (auto && e : ctx.elems) {
     std::cout << std::setw(3) << n++ << " " << e;
     switch (e) {
       case re::regex_state::NB: break;
-      case re::regex_state::start: break;
       case re::regex_state::bol: break;
       case re::regex_state::eol: break;
-      case re::regex_state::open: break;
-      case re::regex_state::open_nocap: break;
       case re::regex_state::terminate: break;
       case re::regex_state::alternation: break;
 
+      case re::regex_state::start:
+        pit += 2;
+        break;
+
+      case re::regex_state::open:
+      case re::regex_state::open_nocap:
       case re::regex_state::open_alternation:
       case re::regex_state::open_nocap_alternation:
         std::cout << "  idx_close: " << *pit;
         ++pit;
       case re::regex_state::start_alternation:
         std::cout << "  altern: ";
-        assert(pbeg + *pit < pbeg + *(pit + 1u));
-        for (auto && i : falcon::make_range(pbeg + *pit, pbeg + *(pit + 1u))) {
+        assert(pbeg + *pit <= pbeg + pit[1u]);
+        for (auto && i : falcon::make_range(pbeg + *pit, pbeg + pit[1u])) {
           std::cout << i << ", ";
         }
         pit += 2;
@@ -96,16 +103,12 @@ void print_scanner(re::scanner_ctx const & ctx)
         break;
 
       CASE_WITH_QUANTI(re::regex_state::close):
-        std::cout << "  idx_open: " << *pit;
-        pit = pbeg + pbeg[*(pit + 1u) + 2];
+        std::cout << "  idx_open: " << *pit << "  idx_open_param: " << pit[1u];
+        pit = pbeg + pbeg[pit[1u] + 2];
         print_quanti(e);
         break;
     }
     std::cout << std::endl;
-  }
-  std::cout << "\n";
-  for (auto && e : ctx.params) {
-    std::cout << e << ", ";
   }
   std::cout << "\n";
 }

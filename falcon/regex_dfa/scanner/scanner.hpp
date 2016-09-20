@@ -201,6 +201,8 @@ struct scanner_ctx
 
   // idx_alternation... [ idx_first_altern, elems.size, idx_alternation... ] ...
   std::vector<param_type> stack_params;
+  // open* [ idx_close, first_altern, last_altern ]
+  // close* [ idx_open, idx_open_param ] [ quanti ? ]
   std::vector<param_type> params;
   std::vector<regex_state> elems;
 };
