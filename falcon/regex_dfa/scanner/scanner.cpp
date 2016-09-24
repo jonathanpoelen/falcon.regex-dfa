@@ -70,9 +70,11 @@ namespace falcon { namespace regex {
 
 scanner_ctx scan(char const * s)
 {
+  constexpr auto unspecified_next = ~ size_type {};
+
   falcon::regex::scanner_ctx sctx;
-  push_elem(sctx, regex_state::start)
-  .data.start = {};
+  push_elem(sctx, regex_state::start);
+  push_elem(sctx, regex_state::alternation);
 
   using x3::_attr;
   using x3::_pass;
@@ -84,6 +86,9 @@ scanner_ctx scan(char const * s)
   SSt(bol);
   SSt(eol);
   SSt(any);
+  SSt(closure0);
+  SSt(closure1);
+  SSt(option);
 
   auto single1 = [&sctx](auto & ctx) {
     push_elem(sctx, regex_state::single1)
@@ -149,40 +154,41 @@ scanner_ctx scan(char const * s)
     }
   };
 
-  auto open = [&sctx](auto &) {
-    sctx.stack_params.emplace_back(sctx.elems.size());
-    push_elem(sctx, regex_state::open)
-    .data.open.ibeg = unsigned(sctx.stack_alter_list.size());
+  size_type previous_alter = 1;
+
+  auto alternation = [&sctx, &previous_alter](auto &) {
+    elem(sctx, previous_alter).data.alternation.next = sctx.elems.size();
+    previous_alter = sctx.elems.size();
+    push_elem(sctx, regex_state::alternation);
   };
 
+  auto open = [&sctx, &previous_alter](auto &) {
+    sctx.igroups.emplace_back(sctx.elems.size());
+    sctx.igroups.emplace_back(previous_alter);
+    push_elem(sctx, regex_state::open);
+    previous_alter = sctx.elems.size();
+    push_elem(sctx, regex_state::alternation);
+  };
+
+//   // TODO check
 //   auto check_close = [&sctx](auto & ctx) {
 //     if (sctx.alter_list.size()) {
 //       _pass(ctx) = false;
 //     }
 //   };
 
-  auto close = [&sctx](auto &) {
-    // TODO check
-    auto const ielem = sctx.stack_params.back();
-    sctx.stack_params.pop_back();
-    auto & open_data = elem(sctx, ielem).data.open;
-    auto stack_ibeg = open_data.ibeg;
-    open_data.ibeg = unsigned(sctx.alter_list.size());
-    sctx.alter_list.insert(
-      sctx.alter_list.end(),
-      sctx.stack_alter_list.begin() + stack_ibeg,
-      sctx.stack_alter_list.end()
-    );
-    sctx.stack_alter_list.resize(open_data.ibeg);
-    open_data.iend = unsigned(sctx.alter_list.size());
-    open_data.idx_close = unsigned(sctx.elems.size());
-    push_elem(sctx, regex_state::close)
-    .data.close = {ielem};
-  };
+  auto close = [&sctx, &previous_alter](auto &) {
+    assert(sctx.igroups.size());
 
-  auto alternation = [&sctx](auto &) {
-    sctx.stack_alter_list.emplace_back(sctx.elems.size() + 1);
-    push_elem(sctx, regex_state::alternation);
+    elem(sctx, previous_alter).data.alternation.next = unspecified_next;
+    previous_alter = sctx.igroups.back();
+    sctx.igroups.pop_back();
+
+    auto const ielem = sctx.igroups.back();
+    sctx.igroups.pop_back();
+    elem(sctx, ielem).data.open.idx_close = sctx.elems.size();
+    push_elem(sctx, regex_state::close)
+    .data.close.idx_open = ielem;
   };
 
 
@@ -190,9 +196,9 @@ scanner_ctx scan(char const * s)
   auto const u16 = boost::spirit::x3::uint16;
 
   auto quanti_parser
-  = C('*')[inc_state<detail::closure0>(sctx)]
-  | C('+')[inc_state<detail::closure1>(sctx)]
-  | C('?')[inc_state<detail::option>(sctx)]
+  = C('*')[closure0]
+  | C('+')[closure1]
+  | C('?')[option]
   | (C('{') >>
       (
         (u16[repetition] >> C(',')[inc_state<1>(sctx)] >> -u16[interval])
@@ -227,7 +233,7 @@ scanner_ctx scan(char const * s)
   | ( (
         (C('\\') >> C[escaped])
       | (C('.')[any])
-      | (C(')')/* >> x3::attr(0)[check_close] >> x3::attr(0)*/[close])
+      | (C(')')/* TODO >> x3::attr(0)[check_close] >> x3::attr(0)*/[close])
       | (bracket_parser)
       | (-(C('*') | C('+') | C('?') | C('{')) >> C[single1])
       )
@@ -237,23 +243,13 @@ scanner_ctx scan(char const * s)
 
   auto send = s+strlen(s);
   auto res = x3::parse(s, send, parser);
-  if (!res || s != send || sctx.stack_params.size()) {
+  if (!res || s != send || sctx.igroups.size()) {
     //sctx = {};
   }
   else {
-    if (sctx.stack_alter_list.size()) {
-      elem_t & e = sctx.elems[0];
-      inc_enum(e.state, 1);
-      e.data.start.ibeg = unsigned(sctx.alter_list.size());
-      sctx.alter_list.insert(
-        sctx.alter_list.end(),
-        sctx.stack_alter_list.begin(),
-        sctx.stack_alter_list.end()
-      );
-      e.data.start.iend = unsigned(sctx.alter_list.size());
-    }
     sctx.elems.push_back(regex_state::terminate);
   }
+  elem(sctx, previous_alter).data.alternation.next = unspecified_next;
 
   return sctx;
 }

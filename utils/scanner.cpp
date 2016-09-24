@@ -8,15 +8,8 @@ namespace re = falcon::regex;
 
 void print_scanner(re::scanner_ctx const & ctx)
 {
-#define CASE_WITH_QUANTI(s) \
-  case s:                   \
-  case s##_closure0:        \
-  case s##_closure1:        \
-  case s##_option
-
   unsigned n = 0;
 
-  auto abeg = ctx.alter_list.begin();
   auto bbeg = ctx.bracket_list.begin();
 
   for (re::scanner_ctx::elem_t const & e : ctx.elems) {
@@ -26,9 +19,8 @@ void print_scanner(re::scanner_ctx const & ctx)
       case re::regex_state::bol: break;
       case re::regex_state::eol: break;
       case re::regex_state::terminate: break;
-      case re::regex_state::alternation: break;
       case re::regex_state::start: break;
-      CASE_WITH_QUANTI(re::regex_state::any): break;
+      case re::regex_state::any: break;
 
       case re::regex_state::brace0:
         std::cout << "  {," << e.data.interval.m << "}";
@@ -42,33 +34,30 @@ void print_scanner(re::scanner_ctx const & ctx)
       case re::regex_state::interval:
         std::cout << "  {" << e.data.interval.n << "," << e.data.interval.m << "}";
         break;
+      case re::regex_state::closure0: break;
+      case re::regex_state::closure1: break;
+      case re::regex_state::option: break;
+
+      case re::regex_state::alternation:
+        std::cout << "  next: " << e.data.alternation.next;
+        break;
 
       case re::regex_state::open:
       case re::regex_state::open_nocap:
-      case re::regex_state::open_alternation:
-      case re::regex_state::open_nocap_alternation:
         std::cout << "  idx_close: " << e.data.open.idx_close;
-      case re::regex_state::start_alternation:
-        std::cout << "  altern: ";
-        for (auto && i : falcon::make_range(
-          abeg + e.data.start.ibeg,
-          abeg + e.data.start.iend
-        )) {
-          std::cout << i << ", ";
-        }
         break;
 
-      CASE_WITH_QUANTI(re::regex_state::close):
+      case re::regex_state::close:
         std::cout << "  idx_open: " << e.data.close.idx_open;
         break;
 
-      CASE_WITH_QUANTI(re::regex_state::single1):
-      CASE_WITH_QUANTI(re::regex_state::escaped):
+      case re::regex_state::single1:
+      case re::regex_state::escaped:
         std::cout << "  " << char(e.data.single.c);
         break;
 
-      CASE_WITH_QUANTI(re::regex_state::bracket):
-      CASE_WITH_QUANTI(re::regex_state::bracket_reverse):
+      case re::regex_state::bracket:
+      case re::regex_state::bracket_reverse:
         std::cout << "  [";
         for (auto && c : falcon::make_range(
           bbeg + e.data.bracket.ibeg,

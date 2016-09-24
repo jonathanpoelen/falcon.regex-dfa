@@ -36,7 +36,7 @@ SOFTWARE.
 namespace falcon { namespace regex {
 
 using char_int = uint32_t;
-using size_type = std::size_t;
+using size_type = unsigned;
 
 namespace detail { namespace {
   enum _regex_state_quanti {
@@ -50,50 +50,27 @@ namespace detail { namespace {
 enum class regex_state : char
 {
   start,
-  start_alternation,
+  alternation,
   bol,
   eol,
   open,
-  open_alternation,
   open_nocap,
-  open_nocap_alternation,
-  alternation,
   terminate,
 
   brace0, // {,m}
   repetition, // {n}
   brace1, // {n,}
   interval, // {n,m}
+  closure0, // *
+  closure1, // +
+  option, // ?
 
   single1,
-  single1_closure0,
-  single1_closure1,
-  single1_option,
-
   escaped,
-  escaped_closure0,
-  escaped_closure1,
-  escaped_option,
-
   any,
-  any_closure0,
-  any_closure1,
-  any_option,
-
   bracket,
-  bracket_closure0,
-  bracket_closure1,
-  bracket_option,
-
   bracket_reverse,
-  bracket_reverse_closure0,
-  bracket_reverse_closure1,
-  bracket_reverse_option,
-
   close,
-  close_closure0,
-  close_closure1,
-  close_option,
 
   NB
 };
@@ -103,50 +80,27 @@ std::basic_ostream<Ch, Tr> &
 operator <<(std::basic_ostream<Ch, Tr> & os, regex_state const & st) {
   constexpr char const * names[]{
     "start",
-    "start_alternation",
+    "alternation",
     "bol",
     "eol",
     "open",
-    "open_alternation",
     "open_nocap",
-    "open_nocap_alternation",
-    "alternation",
     "terminate",
 
     "brace0",
     "repetition",
     "brace1",
     "interval",
+    "closure0",
+    "closure1",
+    "option",
 
     "single1",
-    "single1_closure0",
-    "single1_closure1",
-    "single1_option",
-
     "escaped",
-    "escaped_closure0",
-    "escaped_closure1",
-    "escaped_option",
-
     "any",
-    "any_closure0",
-    "any_closure1",
-    "any_option",
-
     "bracket",
-    "bracket_closure0",
-    "bracket_closure1",
-    "bracket_option",
-
     "bracket_reverse",
-    "bracket_reverse_closure0",
-    "bracket_reverse_closure1",
-    "bracket_reverse_option",
-
     "close",
-    "close_closure0",
-    "close_closure1",
-    "close_option",
   };
   static_assert(sizeof(names)/sizeof(names[0]) == static_cast<std::size_t>(regex_state::NB), "");
   return os << names[static_cast<unsigned>(st)];
@@ -154,22 +108,19 @@ operator <<(std::basic_ostream<Ch, Tr> & os, regex_state const & st) {
 
 struct scanner_ctx
 {
-  struct start_t
+  struct alternation_t
   {
-    unsigned ibeg;
-    unsigned iend;
+    size_type next;
   };
 
   struct open_t
   {
-    unsigned ibeg;
-    unsigned iend;
-    unsigned idx_close;
+    size_type idx_close;
   };
 
   struct close_t
   {
-    unsigned idx_open;
+    size_type idx_open;
   };
 
   struct single_t
@@ -179,14 +130,14 @@ struct scanner_ctx
 
   struct bracket_t
   {
-    unsigned ibeg;
-    unsigned iend;
+    size_type ibeg;
+    size_type iend;
   };
 
   struct interval_t
   {
-    unsigned n;
-    unsigned m;
+    size_type n;
+    size_type m;
   };
 
   struct elem_t
@@ -194,12 +145,12 @@ struct scanner_ctx
     regex_state state;
     union U
     {
-      start_t start;
       open_t open;
       close_t close;
       single_t single;
       bracket_t bracket;
       interval_t interval;
+      alternation_t alternation;
       struct {} dummy;
     } data;
 
@@ -211,11 +162,8 @@ struct scanner_ctx
   // TODO char_int or size_type
   using param_type = uint32_t;
 
-  // idx_alternation... [ idx_first_altern, elems.size, idx_alternation... ] ...
   std::vector<char_int> bracket_list;
-  std::vector<unsigned> alter_list;
-  std::vector<unsigned> stack_alter_list;
-  std::vector<param_type> stack_params;
+  std::vector<size_type> igroups;
   std::vector<elem_t> elems;
 };
 
