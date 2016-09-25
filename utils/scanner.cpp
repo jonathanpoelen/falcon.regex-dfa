@@ -1,84 +1,22 @@
 #include "falcon/regex_dfa/scanner/scanner.hpp"
-#include "falcon/regex_dfa/range_iterator.hpp"
+#include "falcon/regex_dfa/scanner/scanner_io.hpp"
+#include "falcon/regex_dfa/scanner/match.hpp"
 #include <iostream>
 #include <iomanip>
 #include <cassert>
 
 namespace re = falcon::regex;
 
-void print_scanner(re::scanner_ctx const & ctx)
-{
-  unsigned n = 0;
-
-  auto bbeg = ctx.bracket_list.begin();
-
-  for (re::scanner_ctx::elem_t const & e : ctx.elems) {
-    std::cout << std::setw(3) << n++ << " " << e.state;
-    switch (e.state) {
-      case re::regex_state::NB: break;
-      case re::regex_state::bol: break;
-      case re::regex_state::eol: break;
-      case re::regex_state::terminate: break;
-      case re::regex_state::start: break;
-      case re::regex_state::any: break;
-
-      case re::regex_state::brace0:
-        std::cout << "  {," << e.data.interval.m << "}";
-        break;
-      case re::regex_state::repetition:
-        std::cout << "  {" << e.data.interval.n << "}";
-        break;
-      case re::regex_state::brace1:
-        std::cout << "  {" << e.data.interval.n << ",}";
-        break;
-      case re::regex_state::interval:
-        std::cout << "  {" << e.data.interval.n << "," << e.data.interval.m << "}";
-        break;
-      case re::regex_state::closure0: break;
-      case re::regex_state::closure1: break;
-      case re::regex_state::option: break;
-
-      case re::regex_state::alternation:
-        std::cout << "  next: " << e.data.alternation.next;
-        break;
-
-      case re::regex_state::open:
-      case re::regex_state::open_nocap:
-        std::cout << "  idx_close: " << e.data.open.idx_close;
-        break;
-
-      case re::regex_state::close:
-        std::cout << "  idx_open: " << e.data.close.idx_open;
-        break;
-
-      case re::regex_state::single1:
-      case re::regex_state::escaped:
-        std::cout << "  " << char(e.data.single.c);
-        break;
-
-      case re::regex_state::bracket:
-      case re::regex_state::bracket_reverse:
-        std::cout << "  [";
-        for (auto && c : falcon::make_range(
-          bbeg + e.data.bracket.ibeg,
-          bbeg + e.data.bracket.iend
-        )) {
-          std::cout << char(c);
-        }
-        std::cout << "]";
-        break;
-    }
-    std::cout << std::endl;
-  }
-  std::cout << "\n";
-}
-
 int main(int, char ** av) {
   if (av[1]) {
     char ** arr_str = av;
     while (*++arr_str) {
       std::cout << "pattern: \033[37;02m" << *arr_str << "\033[0m\n";
-      print_scanner(re::scan(*arr_str));
+      auto scan_ctx = re::scan(*arr_str);
+      std::cout << scan_ctx;
+      while (*++arr_str) {
+        std::cout << "match: " << re::match(scan_ctx, *arr_str) << " -- " << *arr_str << "\n";
+      }
     }
   }
   else {
@@ -90,11 +28,22 @@ int main(int, char ** av) {
       std::cin
     ) {
       try {
-        print_scanner(re::scan(s.c_str()));
+        auto scan_ctx = re::scan(s.c_str());
+        std::cout << scan_ctx;
+        while (
+          std::cout << "str: \033[37;01m",
+          std::getline(std::cin, s),
+          std::cout << "\033[0m",
+          std::cin
+        ) {
+          std::cout << "match: " << re::match(scan_ctx, s.c_str()) << "\n";
+        }
       }
       catch (std::exception const & e) {
         std::cerr << e.what() << "\n";
       }
+      std::cout << "\n";
+      std::cin.clear();
     }
   }
   return 0;

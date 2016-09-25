@@ -38,15 +38,6 @@ namespace falcon { namespace regex {
 using char_int = uint32_t;
 using size_type = unsigned;
 
-namespace detail { namespace {
-  enum _regex_state_quanti {
-    none,
-    closure0,
-    closure1,
-    option
-  };
-} }
-
 enum class regex_state : char
 {
   start,
@@ -151,7 +142,6 @@ struct scanner_ctx
       bracket_t bracket;
       interval_t interval;
       alternation_t alternation;
-      struct {} dummy;
     } data;
 
     elem_t(regex_state st)

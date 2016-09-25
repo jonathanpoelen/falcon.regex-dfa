@@ -62,6 +62,13 @@ set(
 )
 add_library(re_scanner ${SRC_RE_SCANNER})
 
+set(
+  SRC_RE_MATCH
+  ${SRC}/scanner/match.cpp
+  ${SRC}/scanner/match.hpp
+)
+add_library(re_match ${SRC_RE_MATCH})
+
 # source_group(libs FILES ${SRC_SCAN})
 
 
@@ -69,7 +76,7 @@ add_library(re_scanner ${SRC_RE_SCANNER})
 # add_executable(match utils/match.cpp)
 # add_executable(re_scan utils/scan.cpp)
 # add_executable(new_scan utils/scan2.cpp)
-add_executable(scanner utils/scanner.cpp)
+add_executable(scanner utils/scanner.cpp ${SRC}/scanner/scanner_io.hpp)
 # add_executable(re_scan2 utils/scan2.cpp)
 # add_executable(re_scan_reduce utils/scan_reduce.cpp)
 
@@ -110,3 +117,4 @@ set(EXE_SCANNER scanner)
 # link_library(re_print ${EXE_SCAN3})
 # link_library(re_match ${EXE_MATCH})
 link_library(re_scanner ${EXE_SCANNER})
+link_library(re_match ${EXE_SCANNER})
