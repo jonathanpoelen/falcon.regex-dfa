@@ -136,8 +136,8 @@ bool match(scanner_ctx const & ctx, char const * s)
           elem_t * alterp = pnext(e);
           updit(next(*alterp));
           auto pos = itpos();
-          while (alterp->data.alternation.next != unspecified_next) {
-            alterp = edata + alterp->data.alternation.next;
+          while (alterp->data.alternation.inc_next != unspecified_next) {
+            alterp += alterp->data.alternation.inc_next;
             add1(next(alterp));
           }
           updrng(pos);

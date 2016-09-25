@@ -67,16 +67,17 @@ print_elem(
     case regex_state::option: break;
 
     case regex_state::alternation:
-      out << "  next: " << e.data.alternation.next;
+      out << "  inc_next: +" << e.data.alternation.inc_next;
       break;
 
     case regex_state::open:
     case regex_state::open_nocap:
-      out << "  idx_close: " << e.data.open.idx_close;
+      out << "  inc_close: +" << e.data.open.inc_close;
+      out << "  inc_last_alternation: +" << e.data.open.inc_last_alternation;
       break;
 
     case regex_state::close:
-      out << "  idx_open: " << e.data.close.idx_open;
+      out << "  dec_open: -" << e.data.close.dec_open;
       break;
 
     case regex_state::single1:

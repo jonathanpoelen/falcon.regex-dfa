@@ -48,7 +48,7 @@ enum class regex_state : char
   open_nocap,
   terminate,
 
-  brace0, // {,m}
+  brace0, // {,m} -> {0,m}
   repetition, // {n}
   brace1, // {n,}
   interval, // {n,m}
@@ -101,17 +101,18 @@ struct scanner_ctx
 {
   struct alternation_t
   {
-    size_type next;
+    size_type inc_next;
   };
 
   struct open_t
   {
-    size_type idx_close;
+    size_type inc_close;
+    size_type inc_last_alternation;
   };
 
   struct close_t
   {
-    size_type idx_open;
+    size_type dec_open;
   };
 
   struct single_t
@@ -127,8 +128,8 @@ struct scanner_ctx
 
   struct interval_t
   {
-    size_type n;
-    size_type m;
+    uint16_t n;
+    uint16_t m;
   };
 
   struct elem_t

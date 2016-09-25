@@ -97,7 +97,7 @@ scanner_ctx scan(char const * s)
 
   auto brace0 = [&sctx](auto & ctx) {
     push_elem(sctx, regex_state::brace0)
-      .data.interval.m = _attr(ctx);
+    .data.interval = {0, _attr(ctx)};
   };
 
   auto repetition = [&sctx](auto & ctx) {
@@ -157,14 +157,14 @@ scanner_ctx scan(char const * s)
   size_type previous_alter = 1;
 
   auto alternation = [&sctx, &previous_alter](auto &) {
-    elem(sctx, previous_alter).data.alternation.next = sctx.elems.size();
+    elem(sctx, previous_alter).data.alternation.inc_next = sctx.elems.size() - previous_alter;
     previous_alter = sctx.elems.size();
     push_elem(sctx, regex_state::alternation);
   };
 
   auto open = [&sctx, &previous_alter](auto &) {
-    sctx.igroups.emplace_back(sctx.elems.size());
     sctx.igroups.emplace_back(previous_alter);
+    sctx.igroups.emplace_back(sctx.elems.size());
     push_elem(sctx, regex_state::open);
     previous_alter = sctx.elems.size();
     push_elem(sctx, regex_state::alternation);
@@ -180,15 +180,18 @@ scanner_ctx scan(char const * s)
   auto close = [&sctx, &previous_alter](auto &) {
     assert(sctx.igroups.size());
 
-    elem(sctx, previous_alter).data.alternation.next = unspecified_next;
+    auto const ielem = sctx.igroups.back();
+    sctx.igroups.pop_back();
+    auto & edata = elem(sctx, ielem).data.open;
+    edata.inc_close = sctx.elems.size() - ielem;
+    edata.inc_last_alternation = previous_alter - ielem;
+
+    elem(sctx, previous_alter).data.alternation.inc_next = unspecified_next;
     previous_alter = sctx.igroups.back();
     sctx.igroups.pop_back();
 
-    auto const ielem = sctx.igroups.back();
-    sctx.igroups.pop_back();
-    elem(sctx, ielem).data.open.idx_close = sctx.elems.size();
     push_elem(sctx, regex_state::close)
-    .data.close.idx_open = ielem;
+    .data.close.dec_open = ielem;
   };
 
 
@@ -249,7 +252,7 @@ scanner_ctx scan(char const * s)
   else {
     sctx.elems.push_back(regex_state::terminate);
   }
-  elem(sctx, previous_alter).data.alternation.next = unspecified_next;
+  elem(sctx, previous_alter).data.alternation.inc_next = unspecified_next;
 
   return sctx;
 }

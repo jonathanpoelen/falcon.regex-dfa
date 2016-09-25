@@ -28,11 +28,9 @@ SOFTWARE.
 
 #pragma once
 
-#include "falcon/regex_dfa/scanner/scanner.hpp"
-
-
 namespace falcon { namespace regex {
 
+class scanner_ctx;
 bool match(scanner_ctx const & ctx, char const * s);
 
 } }

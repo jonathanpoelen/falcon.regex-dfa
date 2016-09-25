@@ -1,5 +1,6 @@
 #include "falcon/regex_dfa/scanner/scanner.hpp"
 #include "falcon/regex_dfa/scanner/scanner_io.hpp"
+#include "falcon/regex_dfa/scanner/normalize.hpp"
 #include "falcon/regex_dfa/scanner/match.hpp"
 #include <iostream>
 #include <iomanip>
